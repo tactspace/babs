@@ -1,4 +1,4 @@
-import Image from "next/image";
+ 
 
 export default function Home() {
   return (
@@ -20,9 +20,9 @@ export default function Home() {
             <a href="#how-it-works" className="text-sm font-medium hover:text-primary transition-colors">How It Works</a>
             <a href="#demo" className="text-sm font-medium hover:text-primary transition-colors">Demo</a>
           </nav>
-          <button className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2">
+          <a href="/simulate" className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2">
             Get Started
-          </button>
+          </a>
         </div>
       </header>
 
@@ -146,9 +146,9 @@ export default function Home() {
             <h2 className="text-3xl font-bold mb-4">Ready to optimize your e-truck fleet?</h2>
             <p className="text-lg mb-8 max-w-2xl mx-auto opacity-90">Join the sustainable logistics revolution with Babs AI dispatcher.</p>
             <div className="flex gap-4 justify-center flex-wrap">
-              <button className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary-foreground text-primary hover:bg-primary-foreground/90 h-10 px-6 py-2">
-                Request Demo
-              </button>
+              <a href="/simulate" className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary-foreground text-primary hover:bg-primary-foreground/90 h-10 px-6 py-2">
+                Try Simulation
+              </a>
               <button className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-primary-foreground/20 bg-transparent hover:bg-primary-foreground/10 h-10 px-6 py-2">
                 Learn More
               </button>

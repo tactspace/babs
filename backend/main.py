@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, List, Tuple
 import os
 
@@ -8,6 +9,20 @@ from trucks import load_truck_specs
 from charging_stations import load_charging_stations
 
 app = FastAPI(title="E-Truck Routing Optimizer")
+
+# Enable CORS for local frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Load data at startup
 truck_specs = {}
