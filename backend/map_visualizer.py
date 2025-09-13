@@ -5,7 +5,7 @@ import os
 
 def plot_route(
     coordinates: List[Dict],
-    labels: Optional[List[Dict]] = None,
+    plot_labels: bool = True,
     output_file: str = "route_map.html",
     open_browser: bool = True
 ):
@@ -28,6 +28,18 @@ def plot_route(
     if not coordinates:
         print("No coordinates provided to plot")
         return None
+    
+    if plot_labels:
+        import pandas as pd
+        pd = pd.read_csv('/Users/ashish/Desktop/Hackathons/Libergy/babs/backend/data/public_charge_points.csv')
+        charging_labels = []
+        for index, row in pd.iterrows():
+            charging_labels.append({
+                'position': {'latitude': row['latitude'], 'longitude': row['longitude']},
+                'text': row['operator_name'] + ' ' + row['price_€/kWh'] + ' ' + row['truck_suitability'] + ' ' + str(row['max_power_kW']),
+                'type': 'charging'
+            })
+    labels = charging_labels
     
     # Calculate center of the map
     center_lat = sum(coord['latitude'] for coord in coordinates) / len(coordinates)
@@ -102,36 +114,17 @@ def plot_route(
 # Example usage
 if __name__ == "__main__":
 
-    import json
-    with open('route.json', 'r') as f:
-        example_coordinates = json.load(f)['coordinates']
-    # Example labels
-    example_labels = [
-        {
-            'position': {'latitude': 52.52001, 'longitude': 13.40502},
-            'text': 'Berlin - Starting Point',
-            'type': 'start'
-        },
-        {
-            'position': {'latitude': 50.50000, 'longitude': 11.50000},
-            'text': '<b>Charging Stop</b><br>Operator: Aral<br>Price: 0.49 €/kWh<br>Charging Time: 45 minutes',
-            'type': 'charging'
-        },
-        {
-            'position': {'latitude': 49.50000, 'longitude': 11.00000},
-            'text': '<b>Driver Break</b><br>Type: short_break<br>Duration: 45 minutes',
-            'type': 'break'
-        },
-        {
-            'position': {'latitude': 48.13510, 'longitude': 11.58200},
-            'text': 'Munich - Destination',
-            'type': 'end'
-        }
-    ]
-    
+    start_point = (54.7937, 9.4470)
+    end_point = (48.1351, 11.5820)
+
+    example_coordinates = [start_point, end_point]
+    from tomtom import get_route
+    route = get_route(start_point, end_point)
+    example_coordinates = route['coordinates']
+
     # Plot the example route
     plot_route(
         coordinates=example_coordinates,
-        labels=example_labels,
+        plot_labels=True,
         output_file="example_route.html"
     )

@@ -1,3 +1,7 @@
 requests
 fastapi
 pydantic
+folium
+pandas
+networkx
+matplotlib
