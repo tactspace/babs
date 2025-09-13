@@ -1,0 +1,9 @@
+Time,Location,Action,Details / Notes,Duration [min],"Distance[km]"
+07:00 – 11:30,Ingolstadt → Köckern,Drive,"4:30h driving, 360km",270,360
+11:30 – 12:15,"Köckern (highway stop, Aral Autohof)",Break (short) + refuel,"45 min break, snack/toilet, fill up tank and use DKV card",45,
+12:15 – 14:00,Köckern → Großbeeren,Drive,"1:45h driving, 140km",105,140
+14:00 – 15:00,Großbeeren (site),Customer (load / unload),Load/unload goods from or into the truck,60,
+15:00 – 17:45,Großbeeren → Hermsdorf,Drive,"2:45h driving (to get to 9h total), 220km",165,220
+17:45 – 18:00,Hermsdorf (own depot),Driver swap + hand-over,"old driver → needs long rest, new driver → can drive 9h again",15,
+18:00 – 21:30,Hermsdorf → Ingolstadt,Drive,"3:30h driving, 280km",210,280
+21:30 – 22:30,Ingolstadt (site),Customer (load / unload),Load/unload goods from or into the truck,60,

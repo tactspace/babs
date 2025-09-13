@@ -1,0 +1,8 @@
+Route ID,Origin (customer),Stop (customer),Stop (internal),Destination (customer),Notes
+1,Großbeeren,Ingolstadt,Hermsdorf,Großbeeren,Driver swap required in Hermsdorf
+2,Halle,Zuffenhausen,Bamberg,Halle,Mandatory stop in Bamberg
+3,Świebodzin (PL),Grünheide,Bamberg,Świebodzin (PL),
+4,Schwandorf,Ingolstadt,Pentling,Schwandorf,Driver swap required in Pentling
+5,Arnstadt,Ingolstadt,,Arnstadt,"Due to the type of cargo, you cannot use ""Tunnel Rennsteig"" (A71 highway)"
+
+

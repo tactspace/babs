@@ -1,0 +1,20 @@
+Detour costs,,,,
+,,,,
+1,Electricity for extra driving,,,(might already be included in the routing)
+,Amount,1.20,kWh/km,
+,Price,0.39,€/kWh,or the avg energy price of the company for public charging
+,Total,0.47,€/km,
+,,,,
+2,Driver time (wages + charges),,,
+,Speed,70,km/h,"depends on the route (highway 80 km/h, normal streets 50 km/h, etc.)"
+,Price,35,€/h,driver cost per hour (fully loaded)
+,Total,0.50,€/km,
+,,,,
+3,Vehicle variable cost,,,
+,Total,0.05,€/km,"e.g. tyres, maintenance, depreciation"
+,,,,
+4,Tolls,,,
+,Total,0.00,€/km,"currently, e-trucks are exempt from toll charges in DE (diesel trucks pay 0.375 €/km)"
+,,,,
+,,,,
+,Total,1.02,€/km,ONE WAY
