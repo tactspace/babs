@@ -47,7 +47,7 @@ def get_route(start_point, end_point, vehicle_type="truck"):
         # "departAt": "now",
         # "sectionType": "travelTimes,travelCosts,traffic,summary",
         "computeBestOrder": "true",
-        "instructionsType": "text"
+        # "instructionsType": "text"
     }
     
     try:

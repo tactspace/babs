@@ -2,7 +2,7 @@ import json
 import networkx as nx
 from typing import List, Dict, Tuple, Any, Optional
 import math
-from models import ChargingStation
+from models import ChargingStation, Driver
 from charging_stations import load_charging_stations, calculate_distance
 from tomtom import get_route
 
@@ -14,29 +14,66 @@ INTERVAL_TIME = 45  # minutes
 DRIVER_HOURLY_WAGE = 35  # euros per hour
 ALIGNMENT_THRESHOLD = 0.3
 
-def optimize_routes(routes: List[Dict], charging_stations: List[ChargingStation]) -> Dict[str, Any]:
+def get_distance_between_stations(station1_coords: Tuple[float, float], station2_coords: Tuple[float, float], charging_stations: List[ChargingStation]) -> float:
+    """Get the distance between two stations"""
+    with open('graph_computation.json', 'r') as f:
+        distance_cache = json.load(f)
+
+    # find station ids from coords
+    station1_id = next((station.id for station in charging_stations if station.latitude == station1_coords[0] and station.longitude == station1_coords[1]), None)
+    station2_id = next((station.id for station in charging_stations if station.latitude == station2_coords[0] and station.longitude == station2_coords[1]), None)
+
+    print(station1_id, station2_id)
+    try:
+        res =  distance_cache[f"{station1_id}_{station2_id}"]["api_response"]["routes"][0]["summary"]["lengthInMeters"] / 1000
+    except Exception as e:
+        print(f"Error getting distance between {station1_coords} and {station2_coords}: {e}")
+    dist = get_route(station1_coords, station2_coords)
+    res = dist["distance"] / 1000
+    print(f"Distance between {station1_coords} and {station2_coords} is {res} km")
+    return res
+
+def optimize_routes(
+    routes: List[Dict], 
+    charging_stations: List[ChargingStation],
+    drivers: List[Driver]
+) -> Dict[str, Any]:
     """
-    Optimize routes by finding charging stations in the direction of the destination
+    Optimize routes with driver-truck assignments and potential swaps
     
     Args:
-        routes: List of route dictionaries, each with start_coord and end_coord
-        charging_stations: List of available charging stations
-    
+        routes: List of route dictionaries
+        charging_stations: List of charging stations
+        drivers: List of drivers
+        
     Returns:
-        Dictionary with optimized route details
+        Dictionary with optimized route details and driver assignments
     """
-    
     # Initialize results
     results = {
         "routes": [],
         "total_distance": 0,
-        "iterations": []
+        "iterations": [],
+        "driver_assignments": [],
+        "truck_swaps": []
     }
     
-    # Process each route
+    # Initialize driver-truck assignments
+    driver_assignments = []
+    for i, (driver, route) in enumerate(zip(drivers, routes)):
+        driver.current_location = (route["start_coord"]["latitude"], route["start_coord"]["longitude"])
+        driver.current_truck_id = i
+        driver_assignments.append({
+            "driver_id": driver.id,
+            "truck_id": i,
+            "route_id": i
+        })
+    
+    results["driver_assignments"] = driver_assignments
+    
+    # Initialize route processing state
+    route_states = []
     for route_idx, route in enumerate(routes):
-        print(f"Processing route {route_idx+1}/{len(routes)}")
-        
         start_coord = (route["start_coord"]["latitude"], route["start_coord"]["longitude"])
         end_coord = (route["end_coord"]["latitude"], route["end_coord"]["longitude"])
         
@@ -52,15 +89,41 @@ def optimize_routes(routes: List[Dict], charging_stations: List[ChargingStation]
         
         print(f"Route {route_idx+1}: {total_distance_km:.1f} km")
         
-        # Process the route in iterations
-        current_position = start_coord
-        remaining_distance = total_distance_km
-        iterations = []
-        iteration_count = 0
+        # Initialize route state
+        route_states.append({
+            "route_idx": route_idx,
+            "start_coord": start_coord,
+            "end_coord": end_coord,
+            "total_distance_km": total_distance_km,
+            "current_position": start_coord,
+            "remaining_distance": total_distance_km,
+            "iterations": [],
+            "iteration_count": 0,
+            "completed": False
+        })
+    
+    # Process routes in iterations until all are complete
+    all_completed = False
+    global_iteration = 0
+    
+    while not all_completed:
+        global_iteration += 1
+        print(f"Global iteration {global_iteration}")
+        current_iterations = []
         
-        while remaining_distance > 0:
-            iteration_count += 1
-            print(f"Current Position: {current_position}, Iteration {iteration_count}, remaining distance: {remaining_distance:.1f} km")
+        # Process one iteration for each route
+        for route_state in route_states:
+            if route_state["completed"]:
+                continue
+                
+            route_idx = route_state["route_idx"]
+            current_position = route_state["current_position"]
+            end_coord = route_state["end_coord"]
+            remaining_distance = route_state["remaining_distance"]
+            iteration_count = route_state["iteration_count"] + 1
+            route_state["iteration_count"] = iteration_count
+            
+            print(f"Route {route_idx+1}, Iteration {iteration_count}, remaining distance: {remaining_distance:.1f} km")
             
             # Find optimal charging station in the direction of destination
             next_station = find_optimal_next_station(
@@ -73,26 +136,29 @@ def optimize_routes(routes: List[Dict], charging_stations: List[ChargingStation]
             
             if not next_station:
                 print(f"Could not find suitable charging station from {current_position}")
-                break
+                route_state["completed"] = True
+                continue
                 
             next_position = (next_station.latitude, next_station.longitude)
-            segment_distance = calculate_distance(current_position, next_position)
+            segment_distance = get_distance_between_stations(current_position, next_position, charging_stations)
             
             # Update remaining distance
             remaining_distance -= segment_distance
-
-            total_time_elapsed_in_this_iteration = ((segment_distance / AVERAGE_TRUCK_SPEED) * 3600) / 60
-            total_time_elapsed_in_this_iteration += INTERVAL_TIME
-
+            route_state["remaining_distance"] = remaining_distance
+            
+            total_time_elapsed = ((segment_distance / AVERAGE_TRUCK_SPEED) * 3600) / 60
+            total_time_elapsed += INTERVAL_TIME
+            
             # Cost to company is only the time driver was on the road and not the time spent charging
             cost_to_company = DRIVER_HOURLY_WAGE * (segment_distance / AVERAGE_TRUCK_SPEED)
             
             # Estimate charging cost (assuming average charging session of 80% battery at 350 kWh)
             estimated_charging_cost = next_station.price_per_kWh * 280  # 80% of 350 kWh
-
+            
             # Record this iteration
-            iterations.append({
+            iteration_data = {
                 "iteration": iteration_count,
+                "route_idx": route_idx,
                 "start_position": current_position,
                 "end_position": next_position,
                 "distance": segment_distance,
@@ -101,26 +167,36 @@ def optimize_routes(routes: List[Dict], charging_stations: List[ChargingStation]
                     "name": next_station.operator_name,
                     "location": next_position
                 },
-                "time_elapsed_minutes": total_time_elapsed_in_this_iteration,
+                "time_elapsed_minutes": total_time_elapsed,
                 "cost_to_company": cost_to_company,
                 "charging_cost": estimated_charging_cost,
                 "sum_cost": cost_to_company + estimated_charging_cost
-            })
+            }
+            
+            route_state["iterations"].append(iteration_data)
+            current_iterations.append(iteration_data)
             
             # Update current position for next iteration
-            current_position = next_position
+            route_state["current_position"] = next_position
+            
+            # Update driver locations
+            for driver in drivers:
+                if driver.current_truck_id == route_idx:
+                    driver.current_location = next_position
             
             # If we're close enough to destination, finish
             if remaining_distance < TARGET_SEGMENT_DISTANCE + DISTANCE_TOLERANCE:
                 # Final segment to destination
-                final_segment = get_route(current_position, end_coord)
+                final_segment = get_route(next_position, end_coord)
                 if final_segment:
                     final_distance = final_segment["distance"] / 1000
                     final_time_elapsed = ((final_distance / AVERAGE_TRUCK_SPEED) * 3600) / 60 
                     final_cost_to_company = DRIVER_HOURLY_WAGE * (final_distance / AVERAGE_TRUCK_SPEED)
-                    iterations.append({
+                    
+                    final_iteration = {
                         "iteration": iteration_count + 1,
-                        "start_position": current_position,
+                        "route_idx": route_idx,
+                        "start_position": next_position,
                         "end_position": end_coord,
                         "distance": final_distance,
                         "is_final": True,
@@ -128,21 +204,67 @@ def optimize_routes(routes: List[Dict], charging_stations: List[ChargingStation]
                         "time_elapsed_minutes": final_time_elapsed,
                         "charging_cost": 0,
                         "sum_cost": final_cost_to_company
-                    })
+                    }
                     
-                    remaining_distance = 0
+                    route_state["iterations"].append(final_iteration)
+                    route_state["remaining_distance"] = 0
+                    route_state["completed"] = True
+                    route_state["current_position"] = end_coord
+                    
+                    # Update driver locations for completed route
+                    for driver in drivers:
+                        if driver.current_truck_id == route_idx:
+                            driver.current_location = end_coord
         
-        # Add route results
+        # After processing one iteration for each route, check for potential truck swaps
+        if current_iterations:
+            potential_swaps = find_potential_truck_swaps(
+                current_iterations, 
+                drivers,
+                charging_stations
+            )
+            
+            # Apply the best swap
+            if potential_swaps:
+                swap = potential_swaps[0]  # Take the best swap
+                
+                # Update driver assignments
+                driver1_id = swap["driver1_id"]
+                driver2_id = swap["driver2_id"]
+                
+                # Find the drivers
+                driver1 = next(d for d in drivers if d.id == driver1_id)
+                driver2 = next(d for d in drivers if d.id == driver2_id)
+                
+                # Swap truck assignments
+                temp_truck = driver1.current_truck_id
+                driver1.current_truck_id = driver2.current_truck_id
+                driver2.current_truck_id = temp_truck
+                
+                # Record the swap
+                results["truck_swaps"].append({
+                    "station_id": swap["station_id"],
+                    "driver1_id": driver1_id,
+                    "driver2_id": driver2_id,
+                    "benefit_km": swap["benefit_km"],
+                    "global_iteration": global_iteration
+                })
+        
+        # Check if all routes are completed
+        all_completed = all(route_state["completed"] for route_state in route_states)
+    
+    # Compile final results
+    for route_state in route_states:
         route_result = {
-            "start_coord": start_coord,
-            "end_coord": end_coord,
-            "total_distance": total_distance_km,
-            "iterations": iterations
+            "start_coord": route_state["start_coord"],
+            "end_coord": route_state["end_coord"],
+            "total_distance": route_state["total_distance_km"],
+            "iterations": route_state["iterations"]
         }
         
         results["routes"].append(route_result)
-        results["total_distance"] += total_distance_km
-        results["iterations"].extend(iterations)
+        results["total_distance"] += route_state["total_distance_km"]
+        results["iterations"].extend(route_state["iterations"])
     
     return results
 
@@ -332,6 +454,94 @@ def save_optimization_results(results: Dict[str, Any], output_file: str = "optim
     with open(output_file, 'w') as f:
         json.dump(results, f, indent=2)
 
+def find_potential_truck_swaps(
+    current_iterations: List[Dict], 
+    drivers: List[Driver],
+    charging_stations: List[ChargingStation]
+) -> List[Dict]:
+    """
+    Find potential truck swaps between drivers at charging stations
+    
+    Args:
+        current_iterations: List of current route iterations
+        drivers: List of drivers with their home locations
+        charging_stations: List of charging stations
+        
+    Returns:
+        List of potential truck swaps
+    """
+    potential_swaps = []
+    
+    # Group iterations by charging station
+    station_iterations = {}
+    for iteration in current_iterations:
+        if "is_final" in iteration and iteration["is_final"]:
+            continue
+            
+        station_id = iteration["charging_station"]["id"]
+        if station_id not in station_iterations:
+            station_iterations[station_id] = []
+            
+        station_iterations[station_id].append(iteration)
+    
+    # For each charging station with multiple trucks
+    for station_id, iterations in station_iterations.items():
+        if len(iterations) < 2:
+            continue
+            
+        # Find drivers at this station
+        drivers_at_station = []
+        for driver in drivers:
+            for iteration in iterations:
+                if driver.current_location == iteration["end_position"]:
+                    drivers_at_station.append((driver, iteration))
+        
+        # Check each pair of drivers for potential swaps
+        for i in range(len(drivers_at_station)):
+            for j in range(i+1, len(drivers_at_station)):
+                driver1, iteration1 = drivers_at_station[i]
+                driver2, iteration2 = drivers_at_station[j]
+                
+                # Calculate distances to home for current assignments
+                driver1_to_home_current = calculate_distance(
+                    iteration1["end_position"], 
+                    driver1.home_location
+                )
+                driver2_to_home_current = calculate_distance(
+                    iteration2["end_position"], 
+                    driver2.home_location
+                )
+                
+                # Calculate distances to home if they swap
+                driver1_to_home_swap = calculate_distance(
+                    iteration2["end_position"], 
+                    driver1.home_location
+                )
+                driver2_to_home_swap = calculate_distance(
+                    iteration1["end_position"], 
+                    driver2.home_location
+                )
+                
+                # Calculate benefit of swapping
+                current_total_distance = driver1_to_home_current + driver2_to_home_current
+                swap_total_distance = driver1_to_home_swap + driver2_to_home_swap
+                
+                # If swapping reduces total distance to home
+                if swap_total_distance < current_total_distance:
+                    benefit = current_total_distance - swap_total_distance
+                    
+                    potential_swaps.append({
+                        "station_id": station_id,
+                        "driver1_id": driver1.id,
+                        "driver2_id": driver2.id,
+                        "benefit_km": benefit,
+                        "iteration1": iteration1,
+                        "iteration2": iteration2
+                    })
+    
+    # Sort swaps by benefit (highest first)
+    potential_swaps.sort(key=lambda x: x["benefit_km"], reverse=True)
+    return potential_swaps
 
 import random
 # Example usage
@@ -342,9 +552,6 @@ if __name__ == "__main__":
     print(stations[9], stations[17])
     print(stations[3], stations[4]  )
     print(stations[12], stations[13])
-
-
-
     
     routes = [
         {
@@ -356,9 +563,15 @@ if __name__ == "__main__":
             "end_coord": {"latitude": stations[18].latitude, "longitude": stations[18].longitude}     
         },
     ]
-    
+
+    # Example drivers (replace with actual driver data)
+    drivers = [
+        Driver(id=1, name="Driver Lubeck", home_location=(stations[11].latitude, stations[11].longitude)),
+        Driver(id=2, name="Driver Ulm", home_location=(stations[10].latitude, stations[10].longitude)),
+    ]
+
     # Run optimization
-    results = optimize_routes(routes, stations)
+    results = optimize_routes(routes, stations, drivers)
     
     # Save results
     save_optimization_results(results, "report.json")
@@ -372,3 +585,5 @@ if __name__ == "__main__":
     from map_visualizer import visualize_report_json
     # Visualize the results
     visualize_report_json("report.json", "report_visualization.html")
+
+

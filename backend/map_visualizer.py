@@ -139,6 +139,10 @@ def visualize_report_json(
         print("No routes found in report")
         return None
     
+    # Extract driver assignments and truck swaps
+    driver_assignments = report.get('driver_assignments', [])
+    truck_swaps = report.get('truck_swaps', [])
+    
     # Calculate map center based on all points
     all_points = []
     for route in routes:
@@ -172,19 +176,31 @@ def visualize_report_json(
         start_coord = route['start_coord']
         end_coord = route['end_coord']
         
+        # Find initial driver for this route
+        initial_driver_id = None
+        for assignment in driver_assignments:
+            if assignment['route_id'] == i:
+                initial_driver_id = assignment['driver_id']
+                break
+        
+        driver_text = f" (Driver {initial_driver_id})" if initial_driver_id else ""
+        
         # Start marker
         folium.Marker(
             location=start_coord,
-            popup=f"Route {i+1} Start",
+            popup=f"Route {i+1} Start{driver_text}",
             icon=folium.Icon(color='green', icon='play', prefix='fa')
         ).add_to(route_group)
         
         # End marker
         folium.Marker(
             location=end_coord,
-            popup=f"Route {i+1} End",
+            popup=f"Route {i+1} End{driver_text}",
             icon=folium.Icon(color='red', icon='stop', prefix='fa')
         ).add_to(route_group)
+        
+        # Track current driver for this route
+        current_driver_id = initial_driver_id
         
         # Add route segments and charging stations
         for j, iteration in enumerate(route.get('iterations', [])):
@@ -207,6 +223,7 @@ def visualize_report_json(
             segment_tooltip = f"""
             <div style="width: 200px;">
                 <b>Route {i+1}, Segment {j+1}</b><br>
+                <b>Driver:</b> {current_driver_id}<br>
                 Distance: {distance:.1f} km<br>
                 Time: {time_hours:.1f} hours<br>
                 Cost to Company: €{cost_to_company:.2f}<br>
@@ -231,12 +248,50 @@ def visualize_report_json(
                 station_id = station.get('id', 'Unknown')
                 station_location = station.get('location', end_pos)
                 
+                # Check if there was a truck swap at this station
+                swap_info = None
+                for swap in truck_swaps:
+                    if (swap.get('station_id') == station_id and 
+                        swap.get('iteration') == iteration.get('iteration')):
+                        swap_info = swap
+                        break
+                
+                # Update current driver if there was a swap
+                if swap_info:
+                    # If this driver was involved in the swap
+                    if current_driver_id == swap_info['driver1_id']:
+                        new_driver_id = swap_info['driver2_id']
+                    elif current_driver_id == swap_info['driver2_id']:
+                        new_driver_id = swap_info['driver1_id']
+                    else:
+                        new_driver_id = current_driver_id
+                        
+                    # Add swap marker with special icon
+                    swap_popup = f"""
+                    <div style="width: 220px;">
+                        <h4>Truck Swap!</h4>
+                        <b>Station:</b> {station_name}<br>
+                        <b>Driver {swap_info['driver1_id']}</b> swapped with <b>Driver {swap_info['driver2_id']}</b><br>
+                        <b>Benefit:</b> {swap_info['benefit_km']:.1f} km closer to home<br>
+                    </div>
+                    """
+                    
+                    folium.Marker(
+                        location=station_location,
+                        popup=folium.Popup(swap_popup, max_width=300),
+                        icon=folium.Icon(color='pink', icon='exchange', prefix='fa')
+                    ).add_to(route_group)
+                    
+                    # Update current driver
+                    current_driver_id = new_driver_id
+                
                 # Station popup
                 station_popup = f"""
                 <div style="width: 200px;">
                     <b>{station_name}</b><br>
                     Station ID: {station_id}<br>
-                    After segment {j+1}
+                    After segment {j+1}<br>
+                    <b>Current Driver:</b> {current_driver_id}
                 </div>
                 """
                 
@@ -277,10 +332,6 @@ def visualize_report_json(
             ).add_to(route_group)
         
         # Add route summary box
-        # total_distance = route.get('total_distance', 0)
-        # total_time_hours = route.get('total_time_elapsed_minutes', 0) / 60
-        # total_cost = route.get('total_cost', 0)
-
         total_time_hours = total_time_elapsed_minutes / 60
         
         summary_html = f'''
@@ -294,6 +345,7 @@ def visualize_report_json(
                         border: 2px solid {route_color};
                         z-index: 9999;">
                 <h4>Route {i+1} Summary</h4>
+                <b>Initial Driver:</b> {initial_driver_id}<br>
                 <b>Total Distance:</b> {total_distance:.1f} km<br>
                 <b>Total Time:</b> {total_time_hours:.1f} hours<br>
                 <b>Total Cost:</b> €{total_cost:.2f}<br>
@@ -306,6 +358,31 @@ def visualize_report_json(
         # Add the route group to the map
         route_group.add_to(m)
     
+    # Add truck swap summary if any swaps occurred
+    if truck_swaps:
+        swap_summary = f'''
+            <div style="position: fixed; 
+                        bottom: 150px; 
+                        right: 10px; 
+                        width: 250px; 
+                        background-color: white;
+                        padding: 10px;
+                        border-radius: 5px;
+                        border: 2px solid pink;
+                        z-index: 9999;">
+                <h4>Truck Swaps Summary</h4>
+        '''
+        
+        for i, swap in enumerate(truck_swaps):
+            swap_summary += f'''
+                <b>Swap {i+1}:</b> Drivers {swap['driver1_id']} & {swap['driver2_id']}<br>
+                <b>Location:</b> Station {swap['station_id']}<br>
+                <b>Benefit:</b> {swap['benefit_km']:.1f} km<br>
+                <hr style="margin: 5px 0;">
+            '''
+        
+        swap_summary += '</div>'
+        m.get_root().html.add_child(folium.Element(swap_summary))
     
     # Add legend
     legend_html = f'''
@@ -330,6 +407,10 @@ def visualize_report_json(
             <div style="display: flex; align-items: center; margin-top: 5px;">
                 <div style="width: 20px; height: 20px; border-radius: 50%; background-color: blue; margin-right: 5px;"></div>
                 <span>Charging Station</span>
+            </div>
+            <div style="display: flex; align-items: center; margin-top: 5px;">
+                <div style="width: 20px; height: 20px; border-radius: 50%; background-color: pink; margin-right: 5px;"></div>
+                <span>Truck Swap</span>
             </div>
             <div style="display: flex; align-items: center; margin-top: 5px;">
                 <div style="width: 20px; height: 20px; border-radius: 50%; background-color: orange; margin-right: 5px;"></div>

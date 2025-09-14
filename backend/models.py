@@ -74,3 +74,11 @@ class RouteRequest(BaseModel):
     end_point: Tuple[float, float]  # (latitude, longitude)
     truck_model: str  # reference to a truck model
     initial_battery_level: Optional[float] = None  # in kWh, if None assume full battery
+
+class Driver(BaseModel):
+    """Model representing a truck driver"""
+    id: int
+    name: str
+    home_location: Tuple[float, float]  # (latitude, longitude)
+    current_truck_id: Optional[int] = None
+    current_location: Optional[Tuple[float, float]] = None

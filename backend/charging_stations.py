@@ -81,45 +81,6 @@ def calculate_distance(point1: Tuple[float, float], point2: Tuple[float, float])
     return distance
 
 
-def find_nearest_charging_stations(
-    point: Tuple[float, float],
-    charging_stations: List[ChargingStation],
-    max_distance: float = 50.0,  # km
-    truck_suitable_only: bool = True,
-    limit: int = 5
-) -> List[ChargingStation]:
-    """
-    Find the nearest charging stations to a given point
-    
-    Args:
-        point: (latitude, longitude) of the point
-        charging_stations: List of all available charging stations
-        max_distance: Maximum distance in kilometers to search
-        truck_suitable_only: If True, only return stations suitable for trucks
-        limit: Maximum number of stations to return
-        
-    Returns:
-        List of nearest ChargingStation objects
-    """
-    stations_with_distance = []
-    
-    for station in charging_stations:
-        # Skip stations not suitable for trucks if requested
-        if truck_suitable_only and station.truck_suitability != "yes":
-            continue
-            
-        distance = calculate_distance(point, (station.latitude, station.longitude))
-        
-        if distance <= max_distance:
-            stations_with_distance.append((station, distance))
-    
-    # Sort by distance
-    stations_with_distance.sort(key=lambda x: x[1])
-    
-    # Return only the stations, not the distances
-    return [station for station, _ in stations_with_distance[:limit]]
-
-
 def build_charging_station_graph(charging_stations: List[ChargingStation], max_edge_distance: float = 400.0) -> nx.Graph:
     """
     Build a graph where nodes are charging stations and edges represent possible routes between them.
@@ -188,7 +149,7 @@ def visualize_charging_graph_map(graph: nx.Graph, output_file: str = "charging_g
         Price: {station.price_per_kWh}€/kWh<br>
         Truck Suitable: {station.truck_suitability}
         Station ID: {station.id}<br>
-        
+
         """
         
         # Add marker
@@ -286,7 +247,7 @@ def compute_and_cache_station_distances(graph: nx.Graph, output_file: str = "gra
                         "latitude": station2.latitude,
                         "longitude": station2.longitude
                     },
-                    "api_response": route_data["full_response"]
+                    "api_response": route_data["full_response"]["routes"][0]["summary"]
                 }
                 
                 distance_cache[cache_key] = cache_entry
@@ -836,14 +797,14 @@ if __name__ == "__main__":
     print(stations[0])
     
     # Build graph
-    graph = build_charging_station_graph(stations[:25])
-    updated_graph = update_graph_weights(graph)
+    graph = build_charging_station_graph(stations)
+    
+
+    compute_and_cache_station_distances(graph)
+
+    # updated_graph = update_graph_weights(graph)
 
     visualize_charging_graph_map(graph)
-
-    
-
-    
     # Print some basic graph statistics
     print(f"Graph has {graph.number_of_nodes()} nodes and {graph.number_of_edges()} edges")
     
