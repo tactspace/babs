@@ -101,3 +101,11 @@ class RouteRequest(BaseModel):
     optimize_by: Optional[str] = Field(default="time", description="Optimize by 'time' or 'cost'")
     num_drivers: Optional[int] = Field(default=1, description="Number of available drivers for swapping")
     driver_ids: Optional[List[str]] = None
+
+class Driver(BaseModel):
+    """Model representing a truck driver"""
+    id: int
+    name: str
+    home_location: Tuple[float, float]  # (latitude, longitude)
+    current_truck_id: Optional[int] = None
+    current_location: Optional[Tuple[float, float]] = None
