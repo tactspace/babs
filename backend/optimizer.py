@@ -13,6 +13,8 @@ AVERAGE_TRUCK_SPEED = 70  # km/h
 INTERVAL_TIME = 45  # minutes
 DRIVER_HOURLY_WAGE = 35  # euros per hour
 ALIGNMENT_THRESHOLD = 0.3
+# Require drivers' onward directions at a station to be sufficiently opposite (crossing paths)
+INVERSE_ALIGNMENT_THRESHOLD = -0.1
 
 def get_distance_between_stations(station1_coords: Tuple[float, float], station2_coords: Tuple[float, float], charging_stations: List[ChargingStation]) -> float:
     """Get the distance between two stations"""
@@ -218,10 +220,13 @@ def optimize_routes(
         
         # After processing one iteration for each route, check for potential truck swaps
         if current_iterations:
+            # Map route index to its end coordinate for alignment checks
+            route_end_coords = {rs["route_idx"]: rs["end_coord"] for rs in route_states}
             potential_swaps = find_potential_truck_swaps(
                 current_iterations, 
                 drivers,
-                charging_stations
+                charging_stations,
+                route_end_coords
             )
             
             # Apply the best swap
@@ -241,12 +246,21 @@ def optimize_routes(
                 driver1.current_truck_id = driver2.current_truck_id
                 driver2.current_truck_id = temp_truck
                 
-                # Record the swap
+                # Record the swap for both involved iterations so the visualizer can match per route
                 results["truck_swaps"].append({
                     "station_id": swap["station_id"],
                     "driver1_id": driver1_id,
                     "driver2_id": driver2_id,
                     "benefit_km": swap["benefit_km"],
+                    "iteration": swap["iteration1"]["iteration"],
+                    "global_iteration": global_iteration
+                })
+                results["truck_swaps"].append({
+                    "station_id": swap["station_id"],
+                    "driver1_id": driver1_id,
+                    "driver2_id": driver2_id,
+                    "benefit_km": swap["benefit_km"],
+                    "iteration": swap["iteration2"]["iteration"],
                     "global_iteration": global_iteration
                 })
         
@@ -457,18 +471,22 @@ def save_optimization_results(results: Dict[str, Any], output_file: str = "optim
 def find_potential_truck_swaps(
     current_iterations: List[Dict], 
     drivers: List[Driver],
-    charging_stations: List[ChargingStation]
+    charging_stations: List[ChargingStation],
+    route_end_coords: Dict[int, Tuple[float, float]]
 ) -> List[Dict]:
     """
-    Find potential truck swaps between drivers at charging stations
+    Find potential truck swaps between drivers at charging stations.
+    Only consider pairs whose onward directions from the station are inversely aligned
+    (i.e., crossing paths) according to INVERSE_ALIGNMENT_THRESHOLD.
     
     Args:
         current_iterations: List of current route iterations
         drivers: List of drivers with their home locations
         charging_stations: List of charging stations
+        route_end_coords: Mapping from route_idx to final destination coordinates
         
     Returns:
-        List of potential truck swaps
+        List of potential truck swaps (sorted by most inverse alignment)
     """
     potential_swaps = []
     
@@ -489,58 +507,60 @@ def find_potential_truck_swaps(
         if len(iterations) < 2:
             continue
             
-        # Find drivers at this station
+        # Find drivers at this station by mapping each iteration's route to its current driver
         drivers_at_station = []
-        for driver in drivers:
-            for iteration in iterations:
-                if driver.current_location == iteration["end_position"]:
-                    drivers_at_station.append((driver, iteration))
+        for iteration in iterations:
+            driver_for_route = next((d for d in drivers if d.current_truck_id == iteration["route_idx"]), None)
+            if driver_for_route:
+                drivers_at_station.append((driver_for_route, iteration))
         
         # Check each pair of drivers for potential swaps
         for i in range(len(drivers_at_station)):
             for j in range(i+1, len(drivers_at_station)):
                 driver1, iteration1 = drivers_at_station[i]
                 driver2, iteration2 = drivers_at_station[j]
+                # Skip invalid pairs where the same driver is matched twice
+                if driver1.id == driver2.id:
+                    continue
                 
-                # Calculate distances to home for current assignments
-                driver1_to_home_current = calculate_distance(
-                    iteration1["end_position"], 
-                    driver1.home_location
-                )
-                driver2_to_home_current = calculate_distance(
-                    iteration2["end_position"], 
-                    driver2.home_location
-                )
+                # Compute onward direction vectors from this station to their route destinations
+                station_pos = iteration1["end_position"]  # same for iteration2 by grouping
+                route1_end = route_end_coords.get(iteration1["route_idx"])
+                route2_end = route_end_coords.get(iteration2["route_idx"])
+                if not route1_end or not route2_end:
+                    continue
+                v1 = (route1_end[0] - station_pos[0], route1_end[1] - station_pos[1])
+                v2 = (route2_end[0] - station_pos[0], route2_end[1] - station_pos[1])
                 
-                # Calculate distances to home if they swap
-                driver1_to_home_swap = calculate_distance(
-                    iteration2["end_position"], 
-                    driver1.home_location
-                )
-                driver2_to_home_swap = calculate_distance(
-                    iteration1["end_position"], 
-                    driver2.home_location
-                )
+                # Normalize
+                def _normalize(vec: Tuple[float, float]) -> Tuple[float, float]:
+                    length = math.sqrt(vec[0]**2 + vec[1]**2)
+                    if length == 0:
+                        return (0.0, 0.0)
+                    return (vec[0]/length, vec[1]/length)
+                nv1 = _normalize(v1)
+                nv2 = _normalize(v2)
                 
-                # Calculate benefit of swapping
-                current_total_distance = driver1_to_home_current + driver2_to_home_current
-                swap_total_distance = driver1_to_home_swap + driver2_to_home_swap
+                # Dot product: -1 -> opposite, 0 -> perpendicular, 1 -> same
+                dot = nv1[0] * nv2[0] + nv1[1] * nv2[1]
+                # Require sufficiently inverse alignment (crossing paths)
+                if dot > INVERSE_ALIGNMENT_THRESHOLD:
+                    # Skip pairs that are heading in similar or perpendicular directions
+                    continue
                 
-                # If swapping reduces total distance to home
-                if swap_total_distance < current_total_distance:
-                    benefit = current_total_distance - swap_total_distance
-                    
-                    potential_swaps.append({
-                        "station_id": station_id,
-                        "driver1_id": driver1.id,
-                        "driver2_id": driver2.id,
-                        "benefit_km": benefit,
-                        "iteration1": iteration1,
-                        "iteration2": iteration2
-                    })
+                # Alignment-only swap candidate (no home-distance benefit)
+                potential_swaps.append({
+                    "station_id": station_id,
+                    "driver1_id": driver1.id,
+                    "driver2_id": driver2.id,
+                    "benefit_km": 0.0,
+                    "alignment_dot": dot,
+                    "iteration1": iteration1,
+                    "iteration2": iteration2
+                })
     
-    # Sort swaps by benefit (highest first)
-    potential_swaps.sort(key=lambda x: x["benefit_km"], reverse=True)
+    # Sort swaps by most inverse alignment (more negative dot first)
+    potential_swaps.sort(key=lambda x: x.get("alignment_dot", 0.0))
     return potential_swaps
 
 import random
@@ -561,6 +581,14 @@ if __name__ == "__main__":
         {
             "start_coord": {"latitude": stations[10].latitude, "longitude": stations[10].longitude},  
             "end_coord": {"latitude": stations[18].latitude, "longitude": stations[18].longitude}     
+        },
+        {
+            "start_coord": {"latitude": stations[21].latitude, "longitude": stations[21].longitude},  
+            "end_coord": {"latitude": stations[3].latitude, "longitude": stations[3].longitude}     
+        },
+        {
+            "start_coord": {"latitude": stations[9].latitude, "longitude": stations[9].longitude},  
+            "end_coord": {"latitude": stations[22].latitude, "longitude": stations[22].longitude}     
         },
     ]
 

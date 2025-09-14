@@ -172,7 +172,7 @@ def visualize_report_json(
         # Create a feature group for this route
         route_group = folium.FeatureGroup(name=f"Route {i+1}")
         
-        # Add start and end markers
+        # Add start marker now; end marker will be added after applying swaps
         start_coord = route['start_coord']
         end_coord = route['end_coord']
         
@@ -192,12 +192,7 @@ def visualize_report_json(
             icon=folium.Icon(color='green', icon='play', prefix='fa')
         ).add_to(route_group)
         
-        # End marker
-        folium.Marker(
-            location=end_coord,
-            popup=f"Route {i+1} End{driver_text}",
-            icon=folium.Icon(color='red', icon='stop', prefix='fa')
-        ).add_to(route_group)
+        # Defer end marker until after segments so we can show final driver
         
         # Track current driver for this route
         current_driver_id = initial_driver_id
@@ -267,12 +262,17 @@ def visualize_report_json(
                         new_driver_id = current_driver_id
                         
                     # Add swap marker with special icon
+                    # Prefer alignment display if available
+                    alignment_text = ''
+                    if 'alignment_dot' in swap_info:
+                        alignment_text = f"<b>Alignment:</b> {swap_info['alignment_dot']:.2f} (dot)" \
+                                         if swap_info['alignment_dot'] is not None else ''
                     swap_popup = f"""
                     <div style="width: 220px;">
                         <h4>Truck Swap!</h4>
                         <b>Station:</b> {station_name}<br>
                         <b>Driver {swap_info['driver1_id']}</b> swapped with <b>Driver {swap_info['driver2_id']}</b><br>
-                        <b>Benefit:</b> {swap_info['benefit_km']:.1f} km closer to home<br>
+                        {alignment_text}
                     </div>
                     """
                     
@@ -301,6 +301,14 @@ def visualize_report_json(
                     icon=folium.Icon(color='blue', icon='bolt', prefix='fa')
                 ).add_to(route_group)
         
+        # After processing segments, add the end marker with the final driver
+        final_driver_text = f" (Driver {current_driver_id})" if current_driver_id else ''
+        folium.Marker(
+            location=end_coord,
+            popup=f"Route {i+1} End{final_driver_text}",
+            icon=folium.Icon(color='red', icon='stop', prefix='fa')
+        ).add_to(route_group)
+
         # Add driver breaks
         for break_info in route.get('driver_breaks', []):
             break_type = break_info.get('break_type', '')
@@ -360,6 +368,17 @@ def visualize_report_json(
     
     # Add truck swap summary if any swaps occurred
     if truck_swaps:
+        # Dedupe swaps: collapse entries for the two iterations of the same swap
+        deduped = []
+        seen = set()
+        for swap in truck_swaps:
+            key = (swap.get('global_iteration'), swap.get('station_id'),
+                   tuple(sorted([swap.get('driver1_id'), swap.get('driver2_id')])))
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(swap)
+
         swap_summary = f'''
             <div style="position: fixed; 
                         bottom: 150px; 
@@ -373,11 +392,14 @@ def visualize_report_json(
                 <h4>Truck Swaps Summary</h4>
         '''
         
-        for i, swap in enumerate(truck_swaps):
+        for i, swap in enumerate(deduped):
+            align_line = ''
+            if 'alignment_dot' in swap:
+                align_line = f"<b>Alignment:</b> {swap['alignment_dot']:.2f}<br>"
             swap_summary += f'''
                 <b>Swap {i+1}:</b> Drivers {swap['driver1_id']} & {swap['driver2_id']}<br>
                 <b>Location:</b> Station {swap['station_id']}<br>
-                <b>Benefit:</b> {swap['benefit_km']:.1f} km<br>
+                {align_line}
                 <hr style="margin: 5px 0;">
             '''
         
