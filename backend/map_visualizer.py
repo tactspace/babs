@@ -243,11 +243,11 @@ def visualize_report_json(
                 station_id = station.get('id', 'Unknown')
                 station_location = station.get('location', end_pos)
                 
-                # Check if there was a truck swap at this station
+                # Check if there was a truck swap during this iteration
                 swap_info = None
                 for swap in truck_swaps:
-                    if (swap.get('station_id') == station_id and 
-                        swap.get('iteration') == iteration.get('iteration')):
+                    if (swap.get('iteration') == iteration.get('iteration') and 
+                        (current_driver_id == swap.get('driver1_id') or current_driver_id == swap.get('driver2_id'))):
                         swap_info = swap
                         break
                 
@@ -262,22 +262,28 @@ def visualize_report_json(
                         new_driver_id = current_driver_id
                         
                     # Add swap marker with special icon
-                    # Prefer alignment display if available
                     alignment_text = ''
-                    if 'alignment_dot' in swap_info:
-                        alignment_text = f"<b>Alignment:</b> {swap_info['alignment_dot']:.2f} (dot)" \
-                                         if swap_info['alignment_dot'] is not None else ''
+                    if 'alignment_dot' in swap_info and swap_info['alignment_dot'] is not None:
+                        alignment_text = f"<b>Alignment:</b> {swap_info['alignment_dot']:.2f}<br>"
+                    reason_text = ''
+                    if 'reason' in swap_info:
+                        reason_text = f"<b>Reason:</b> {swap_info['reason']}<br>"
+                    detour_text = ''
+                    if 'detour_km_total' in swap_info and swap_info['detour_km_total']:
+                        detour_text = f"<b>Total Detour:</b> {swap_info['detour_km_total']:.1f} km<br>"
                     swap_popup = f"""
-                    <div style="width: 220px;">
+                    <div style="width: 240px;">
                         <h4>Truck Swap!</h4>
-                        <b>Station:</b> {station_name}<br>
-                        <b>Driver {swap_info['driver1_id']}</b> swapped with <b>Driver {swap_info['driver2_id']}</b><br>
-                        {alignment_text}
+                        <b>Station ID:</b> {swap_info.get('station_id', station_id)}<br>
+                        <b>Drivers:</b> {swap_info['driver1_id']} ↔ {swap_info['driver2_id']}<br>
+                        {alignment_text}{reason_text}{detour_text}
                     </div>
                     """
                     
+                    # Prefer provided station_location for rendezvous swaps
+                    swap_location = swap_info.get('station_location', station_location)
                     folium.Marker(
-                        location=station_location,
+                        location=swap_location,
                         popup=folium.Popup(swap_popup, max_width=300),
                         icon=folium.Icon(color='pink', icon='exchange', prefix='fa')
                     ).add_to(route_group)
@@ -378,12 +384,11 @@ def visualize_report_json(
                 continue
             seen.add(key)
             deduped.append(swap)
-
         swap_summary = f'''
             <div style="position: fixed; 
                         bottom: 150px; 
                         right: 10px; 
-                        width: 250px; 
+                        width: 260px; 
                         background-color: white;
                         padding: 10px;
                         border-radius: 5px;
@@ -394,12 +399,18 @@ def visualize_report_json(
         
         for i, swap in enumerate(deduped):
             align_line = ''
-            if 'alignment_dot' in swap:
+            if 'alignment_dot' in swap and swap['alignment_dot'] is not None:
                 align_line = f"<b>Alignment:</b> {swap['alignment_dot']:.2f}<br>"
+            reason_line = ''
+            if 'reason' in swap:
+                reason_line = f"<b>Reason:</b> {swap['reason']}<br>"
+            detour_line = ''
+            if 'detour_km_total' in swap and swap['detour_km_total']:
+                detour_line = f"<b>Total Detour:</b> {swap['detour_km_total']:.1f} km<br>"
             swap_summary += f'''
                 <b>Swap {i+1}:</b> Drivers {swap['driver1_id']} & {swap['driver2_id']}<br>
                 <b>Location:</b> Station {swap['station_id']}<br>
-                {align_line}
+                {align_line}{reason_line}{detour_line}
                 <hr style="margin: 5px 0;">
             '''
         

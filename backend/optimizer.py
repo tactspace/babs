@@ -14,7 +14,9 @@ INTERVAL_TIME = 45  # minutes
 DRIVER_HOURLY_WAGE = 35  # euros per hour
 ALIGNMENT_THRESHOLD = 0.3
 # Require drivers' onward directions at a station to be sufficiently opposite (crossing paths)
-INVERSE_ALIGNMENT_THRESHOLD = -0.1
+INVERSE_ALIGNMENT_THRESHOLD = 0.8
+# Maximum detour radius (km) to consider a rendezvous swap near a station
+NEAR_RENDEZVOUS_RADIUS_KM = 300
 
 def get_distance_between_stations(station1_coords: Tuple[float, float], station2_coords: Tuple[float, float], charging_stations: List[ChargingStation]) -> float:
     """Get the distance between two stations"""
@@ -251,7 +253,11 @@ def optimize_routes(
                     "station_id": swap["station_id"],
                     "driver1_id": driver1_id,
                     "driver2_id": driver2_id,
-                    "benefit_km": swap["benefit_km"],
+                    "benefit_km": swap.get("benefit_km", 0.0),
+                    "alignment_dot": swap.get("alignment_dot"),
+                    "reason": swap.get("reason", "same_station"),
+                    "station_location": swap.get("station_location"),
+                    "detour_km_total": swap.get("detour_km_total", 0.0),
                     "iteration": swap["iteration1"]["iteration"],
                     "global_iteration": global_iteration
                 })
@@ -259,7 +265,11 @@ def optimize_routes(
                     "station_id": swap["station_id"],
                     "driver1_id": driver1_id,
                     "driver2_id": driver2_id,
-                    "benefit_km": swap["benefit_km"],
+                    "benefit_km": swap.get("benefit_km", 0.0),
+                    "alignment_dot": swap.get("alignment_dot"),
+                    "reason": swap.get("reason", "same_station"),
+                    "station_location": swap.get("station_location"),
+                    "detour_km_total": swap.get("detour_km_total", 0.0),
                     "iteration": swap["iteration2"]["iteration"],
                     "global_iteration": global_iteration
                 })
@@ -490,77 +500,92 @@ def find_potential_truck_swaps(
     """
     potential_swaps = []
     
-    # Group iterations by charging station
-    station_iterations = {}
+    # Build iteration -> driver pairs for this global step
+    iteration_driver_pairs: List[Tuple[Driver, Dict]] = []
     for iteration in current_iterations:
         if "is_final" in iteration and iteration["is_final"]:
             continue
-            
-        station_id = iteration["charging_station"]["id"]
-        if station_id not in station_iterations:
-            station_iterations[station_id] = []
-            
-        station_iterations[station_id].append(iteration)
-    
-    # For each charging station with multiple trucks
-    for station_id, iterations in station_iterations.items():
-        if len(iterations) < 2:
-            continue
-            
-        # Find drivers at this station by mapping each iteration's route to its current driver
-        drivers_at_station = []
-        for iteration in iterations:
-            driver_for_route = next((d for d in drivers if d.current_truck_id == iteration["route_idx"]), None)
-            if driver_for_route:
-                drivers_at_station.append((driver_for_route, iteration))
-        
-        # Check each pair of drivers for potential swaps
-        for i in range(len(drivers_at_station)):
-            for j in range(i+1, len(drivers_at_station)):
-                driver1, iteration1 = drivers_at_station[i]
-                driver2, iteration2 = drivers_at_station[j]
-                # Skip invalid pairs where the same driver is matched twice
-                if driver1.id == driver2.id:
-                    continue
-                
-                # Compute onward direction vectors from this station to their route destinations
-                station_pos = iteration1["end_position"]  # same for iteration2 by grouping
-                route1_end = route_end_coords.get(iteration1["route_idx"])
-                route2_end = route_end_coords.get(iteration2["route_idx"])
-                if not route1_end or not route2_end:
-                    continue
-                v1 = (route1_end[0] - station_pos[0], route1_end[1] - station_pos[1])
-                v2 = (route2_end[0] - station_pos[0], route2_end[1] - station_pos[1])
-                
-                # Normalize
-                def _normalize(vec: Tuple[float, float]) -> Tuple[float, float]:
-                    length = math.sqrt(vec[0]**2 + vec[1]**2)
-                    if length == 0:
-                        return (0.0, 0.0)
-                    return (vec[0]/length, vec[1]/length)
-                nv1 = _normalize(v1)
-                nv2 = _normalize(v2)
-                
-                # Dot product: -1 -> opposite, 0 -> perpendicular, 1 -> same
-                dot = nv1[0] * nv2[0] + nv1[1] * nv2[1]
-                # Require sufficiently inverse alignment (crossing paths)
-                if dot > INVERSE_ALIGNMENT_THRESHOLD:
-                    # Skip pairs that are heading in similar or perpendicular directions
-                    continue
-                
-                # Alignment-only swap candidate (no home-distance benefit)
+        driver_for_route = next((d for d in drivers if d.current_truck_id == iteration["route_idx"]), None)
+        if driver_for_route:
+            iteration_driver_pairs.append((driver_for_route, iteration))
+
+    # Helper: compute normalized direction vector
+    def _normalize(vec: Tuple[float, float]) -> Tuple[float, float]:
+        length = math.sqrt(vec[0]**2 + vec[1]**2)
+        if length == 0:
+            return (0.0, 0.0)
+        return (vec[0]/length, vec[1]/length)
+
+    # Evaluate all pairs for same-station and near-station rendezvous
+    for i in range(len(iteration_driver_pairs)):
+        for j in range(i+1, len(iteration_driver_pairs)):
+            driver1, iteration1 = iteration_driver_pairs[i]
+            driver2, iteration2 = iteration_driver_pairs[j]
+            if driver1.id == driver2.id:
+                continue
+
+            # Onward direction vectors from current end positions toward their destinations
+            pos1 = iteration1["end_position"]
+            pos2 = iteration2["end_position"]
+            route1_end = route_end_coords.get(iteration1["route_idx"])
+            route2_end = route_end_coords.get(iteration2["route_idx"])
+            if not route1_end or not route2_end:
+                continue
+            nv1 = _normalize((route1_end[0] - pos1[0], route1_end[1] - pos1[1]))
+            nv2 = _normalize((route2_end[0] - pos2[0], route2_end[1] - pos2[1]))
+            dot = nv1[0] * nv2[0] + nv1[1] * nv2[1]
+            if dot > INVERSE_ALIGNMENT_THRESHOLD:
+                continue
+
+            # Case A: same station
+            station1_id = iteration1["charging_station"]["id"]
+            station2_id = iteration2["charging_station"]["id"]
+            if station1_id == station2_id:
                 potential_swaps.append({
-                    "station_id": station_id,
+                    "station_id": station1_id,
+                    "station_location": iteration1["charging_station"].get("location", pos1),
                     "driver1_id": driver1.id,
                     "driver2_id": driver2.id,
                     "benefit_km": 0.0,
                     "alignment_dot": dot,
+                    "reason": "same_station",
+                    "detour_km_total": 0.0,
                     "iteration1": iteration1,
                     "iteration2": iteration2
                 })
-    
-    # Sort swaps by most inverse alignment (more negative dot first)
-    potential_swaps.sort(key=lambda x: x.get("alignment_dot", 0.0))
+                continue
+
+            # Case B: near-station rendezvous within radius for both
+            best_station = None
+            best_detour_sum = float('inf')
+            for st in charging_stations:
+                if st.truck_suitability != "yes":
+                    continue
+                st_pos = (st.latitude, st.longitude)
+                d1 = calculate_distance(pos1, st_pos)
+                d2 = calculate_distance(pos2, st_pos)
+                if d1 <= NEAR_RENDEZVOUS_RADIUS_KM and d2 <= NEAR_RENDEZVOUS_RADIUS_KM:
+                    detour_sum = d1 + d2
+                    if detour_sum < best_detour_sum:
+                        best_detour_sum = detour_sum
+                        best_station = (st.id, st_pos)
+
+            if best_station is not None:
+                potential_swaps.append({
+                    "station_id": best_station[0],
+                    "station_location": best_station[1],
+                    "driver1_id": driver1.id,
+                    "driver2_id": driver2.id,
+                    "benefit_km": 0.0,
+                    "alignment_dot": dot,
+                    "reason": "rendezvous_within_radius",
+                    "detour_km_total": best_detour_sum,
+                    "iteration1": iteration1,
+                    "iteration2": iteration2
+                })
+
+    # Sort by most inverse alignment first, then by smallest detour if available
+    potential_swaps.sort(key=lambda x: (x.get("alignment_dot", 0.0), x.get("detour_km_total", 0.0)))
     return potential_swaps
 
 import random
@@ -574,21 +599,21 @@ if __name__ == "__main__":
     print(stations[12], stations[13])
     
     routes = [
-        {
-            "start_coord": {"latitude": stations[11].latitude, "longitude": stations[11].longitude},  
-            "end_coord": {"latitude": stations[0].latitude, "longitude": stations[0].longitude}     
-        },
-        {
-            "start_coord": {"latitude": stations[10].latitude, "longitude": stations[10].longitude},  
-            "end_coord": {"latitude": stations[18].latitude, "longitude": stations[18].longitude}     
-        },
+        # {
+        #     "start_coord": {"latitude": stations[11].latitude, "longitude": stations[11].longitude},  
+        #     "end_coord": {"latitude": stations[0].latitude, "longitude": stations[0].longitude}     
+        # },
+        # {
+        #     "start_coord": {"latitude": stations[10].latitude, "longitude": stations[10].longitude},  
+        #     "end_coord": {"latitude": stations[18].latitude, "longitude": stations[18].longitude}     
+        # },
         {
             "start_coord": {"latitude": stations[21].latitude, "longitude": stations[21].longitude},  
             "end_coord": {"latitude": stations[3].latitude, "longitude": stations[3].longitude}     
         },
         {
-            "start_coord": {"latitude": stations[9].latitude, "longitude": stations[9].longitude},  
-            "end_coord": {"latitude": stations[22].latitude, "longitude": stations[22].longitude}     
+            "start_coord": {"latitude": stations[3].latitude, "longitude": stations[3].longitude},  
+            "end_coord": {"latitude": stations[21].latitude, "longitude": stations[21].longitude}     
         },
     ]
 
