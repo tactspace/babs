@@ -196,6 +196,8 @@ def visualize_report_json(
             time_elapsed_minutes = iteration.get('time_elapsed_minutes', 0)
             time_hours = time_elapsed_minutes / 60
             cost_to_company = iteration.get('cost_to_company', 0)
+            charging_cost = iteration.get('charging_cost', 0)
+            sum_cost = iteration.get('sum_cost', 0)
 
             total_cost += cost_to_company
             total_time_elapsed_minutes += time_elapsed_minutes
@@ -207,7 +209,9 @@ def visualize_report_json(
                 <b>Route {i+1}, Segment {j+1}</b><br>
                 Distance: {distance:.1f} km<br>
                 Time: {time_hours:.1f} hours<br>
-                Cost to Company: €{cost_to_company:.2f}
+                Cost to Company: €{cost_to_company:.2f}<br>
+                Charging Cost: €{charging_cost:.2f}<br>
+                Sum Cost: €{sum_cost:.2f}
             </div>
             """
             

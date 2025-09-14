@@ -9,6 +9,8 @@ from models import ChargingStation
 import json
 import time
 from typing import Dict, Any
+import requests
+from typing import Tuple, Optional
 
 
 def load_charging_stations(file_path: str) -> List[ChargingStation]:
@@ -185,6 +187,8 @@ def visualize_charging_graph_map(graph: nx.Graph, output_file: str = "charging_g
         Power: {station.max_power_kW} kW<br>
         Price: {station.price_per_kWh}€/kWh<br>
         Truck Suitable: {station.truck_suitability}
+        Station ID: {station.id}<br>
+        
         """
         
         # Add marker
@@ -732,6 +736,98 @@ def visualize_shortest_route_map(graph: nx.Graph, path: List[int], output_file: 
     # Save the map
     m.save(output_file)
 
+import requests
+from typing import Tuple, Optional
+
+def find_station_by_city(city_name: str, charging_stations: List[ChargingStation], country_code: str = None) -> Optional[ChargingStation]:
+    """
+    Find the closest charging station to a given city.
+    
+    Args:
+        city_name: Name of the city to search for
+        charging_stations: List of ChargingStation objects
+        country_code: Optional two-letter country code to improve geocoding accuracy
+        
+    Returns:
+        The closest ChargingStation object or None if geocoding fails
+    """
+    # Construct the query with city name and optional country code
+    query = city_name
+    if country_code:
+        query = f"{city_name}, {country_code}"
+    
+    # Use Nominatim API for geocoding (free and open-source)
+    base_url = "https://nominatim.openstreetmap.org/search"
+    params = {
+        "q": query,
+        "format": "json",
+        "limit": 1
+    }
+    
+    headers = {
+        "User-Agent": "LibergyCitySearch/1.0"  # Required by Nominatim ToS
+    }
+    
+    try:
+        response = requests.get(base_url, params=params, headers=headers)
+        response.raise_for_status()
+        
+        results = response.json()
+        if not results:
+            print(f"Could not find coordinates for {city_name}")
+            return None
+        
+        # Extract coordinates from the first result
+        city_lat = float(results[0]["lat"])
+        city_lon = float(results[0]["lon"])
+        city_coords = (city_lat, city_lon)
+        
+        print(f"Found coordinates for {city_name}: ({city_lat}, {city_lon})")
+        
+        # Find the nearest charging station
+        nearest_station = None
+        shortest_distance = float('inf')
+        
+        for station in charging_stations:
+            station_coords = (station.latitude, station.longitude)
+            distance = calculate_distance(city_coords, station_coords)
+            
+            if distance < shortest_distance:
+                shortest_distance = distance
+                nearest_station = station
+        
+        if nearest_station:
+            print(f"Nearest station to {city_name} is {nearest_station.operator_name} " 
+                  f"at ({nearest_station.latitude}, {nearest_station.longitude}), "
+                  f"{shortest_distance:.1f} km away")
+            return nearest_station
+        else:
+            print("No charging stations available")
+            return None
+            
+    except Exception as e:
+        print(f"Error finding coordinates for {city_name}: {e}")
+        return None
+
+def get_station_by_city(city_name: str, country_code: str = None) -> Optional[Tuple[float, float]]:
+    """
+    Convenience function to get coordinates of the nearest charging station to a city.
+    Loads charging stations and returns the coordinates directly.
+    
+    Args:
+        city_name: Name of the city
+        country_code: Optional two-letter country code
+        
+    Returns:
+        Tuple of (latitude, longitude) or None if not found
+    """
+    stations = load_charging_stations("data/public_charge_points.csv")
+    nearest_station = find_station_by_city(city_name, stations, country_code)
+    
+    if nearest_station:
+        return (nearest_station.latitude, nearest_station.longitude)
+    return None
+
 # Example usage:
 if __name__ == "__main__":
     # Load charging stations
@@ -743,7 +839,9 @@ if __name__ == "__main__":
     graph = build_charging_station_graph(stations[:25])
     updated_graph = update_graph_weights(graph)
 
-    print(updated_graph)
+    visualize_charging_graph_map(graph)
+
+    
 
     
     # Print some basic graph statistics

@@ -87,6 +87,9 @@ def optimize_routes(routes: List[Dict], charging_stations: List[ChargingStation]
             # Cost to company is only the time driver was on the road and not the time spent charging
             cost_to_company = DRIVER_HOURLY_WAGE * (segment_distance / AVERAGE_TRUCK_SPEED)
             
+            # Estimate charging cost (assuming average charging session of 80% battery at 350 kWh)
+            estimated_charging_cost = next_station.price_per_kWh * 280  # 80% of 350 kWh
+
             # Record this iteration
             iterations.append({
                 "iteration": iteration_count,
@@ -99,7 +102,9 @@ def optimize_routes(routes: List[Dict], charging_stations: List[ChargingStation]
                     "location": next_position
                 },
                 "time_elapsed_minutes": total_time_elapsed_in_this_iteration,
-                "cost_to_company": cost_to_company
+                "cost_to_company": cost_to_company,
+                "charging_cost": estimated_charging_cost,
+                "sum_cost": cost_to_company + estimated_charging_cost
             })
             
             # Update current position for next iteration
@@ -120,7 +125,9 @@ def optimize_routes(routes: List[Dict], charging_stations: List[ChargingStation]
                         "distance": final_distance,
                         "is_final": True,
                         "cost_to_company": final_cost_to_company,
-                        "time_elapsed_minutes": final_time_elapsed
+                        "time_elapsed_minutes": final_time_elapsed,
+                        "charging_cost": 0,
+                        "sum_cost": final_cost_to_company
                     })
                     
                     remaining_distance = 0
@@ -159,12 +166,14 @@ def find_optimal_next_station(
     1. Being within reasonable driving distance (target_distance ± tolerance)
     2. Being in the general direction of the destination (alignment > alignment_threshold)
     3. Being as close as possible to the final destination
+    4. Having lower charging costs
     
     The algorithm:
+    - First checks if destination itself is within target distance range
     - Filters for truck-suitable charging stations
     - Checks if stations are within target distance range
     - Verifies stations are reasonably aligned with the direction to destination
-    - Sorts candidates by proximity to final destination
+    - Sorts candidates by a combined score of distance to destination and charging cost
     - Falls back to relaxed alignment criteria if no suitable stations found
     
     Args:
@@ -197,6 +206,22 @@ def find_optimal_next_station(
     
     # Calculate total distance to destination
     total_distance_to_destination = calculate_distance(start_position, end_position)
+    
+    # First check if the destination is within the target distance range
+    if total_distance_to_destination <= max_distance:
+        print(f"Destination is within range ({total_distance_to_destination:.1f} km). Going directly to destination.")
+        # Create a temporary ChargingStation object for the destination
+        destination_station = ChargingStation(
+            id=-1,  # Use a special ID to indicate this is the destination
+            country="",
+            latitude=end_position[0],
+            longitude=end_position[1],
+            truck_suitability="yes",
+            operator_name="Destination",
+            max_power_kW=0,
+            price_per_kWh=0
+        )
+        return destination_station
     
     # Find all truck-suitable charging stations within the target distance range
     candidate_stations = []
@@ -243,7 +268,11 @@ def find_optimal_next_station(
             # Higher is better - means we're making more progress toward destination
             progress = (total_distance_to_destination - distance_from_station_to_destination) / distance_to_station
             
-            candidate_stations.append((station, distance_to_station, alignment, progress))
+            # Estimate charging cost (assuming average charging session of 80% battery at 350 kWh)
+            # This is a simplified model - in a real implementation you'd use the actual truck model
+            estimated_charging_cost = station.price_per_kWh * 280  # 80% of 350 kWh
+            
+            candidate_stations.append((station, distance_to_station, alignment, progress, estimated_charging_cost))
     
     # If no candidates found with strict criteria, try with relaxed alignment
     if not candidate_stations:
@@ -261,16 +290,38 @@ def find_optimal_next_station(
                 # Calculate progress ratio
                 progress = (total_distance_to_destination - distance_from_station_to_destination) / distance_to_station
                 
-                candidate_stations.append((station, distance_to_station, 0, progress))
+                # Estimate charging cost
+                estimated_charging_cost = station.price_per_kWh * 280  # 80% of 350 kWh
+                
+                candidate_stations.append((station, distance_to_station, 0, progress, estimated_charging_cost))
     
-    # Sort by distance to final destination (closest first)
-    candidate_stations.sort(key=lambda x: calculate_distance((x[0].latitude, x[0].longitude), end_position))
+    # Sort by combined score: distance to destination + charging cost
+    # Normalize both factors to have comparable weights
+    if candidate_stations:
+        # Find max distance and max cost for normalization
+        max_distance = max(calculate_distance((s[0].latitude, s[0].longitude), end_position) for s in candidate_stations)
+        max_cost = max(s[4] for s in candidate_stations) if max(s[4] for s in candidate_stations) > 0 else 1
+        
+        # Calculate combined score for each station
+        for i, (station, distance, alignment, progress, cost) in enumerate(candidate_stations):
+            distance_to_dest = calculate_distance((station.latitude, station.longitude), end_position)
+            # Normalize both factors (0-1 range) and combine them
+            normalized_distance = distance_to_dest / max_distance if max_distance > 0 else 0
+            normalized_cost = cost / max_cost if max_cost > 0 else 0
+            # Combined score (lower is better)
+            combined_score = normalized_distance + normalized_cost
+            # Replace the tuple with updated one including the score
+            candidate_stations[i] = (station, distance, alignment, progress, cost, combined_score)
+        
+        # Sort by combined score (lower is better)
+        candidate_stations.sort(key=lambda x: x[5])
     
     # Print the top 3 candidate stations and their metrics
-    for station, distance, alignment, progress in candidate_stations[:3]:
-        print(f"Station: {station.operator_name}, Progress: {progress:.2f}, Distance: {distance:.1f}, Station ID: {station.id}")
+    for station, distance, alignment, progress, cost, score in candidate_stations[:3]:
+        print(f"Station: {station.operator_name}, Score: {score:.2f}, Distance: {distance:.1f}, "
+              f"Cost: {cost:.2f}, Station ID: {station.id}")
     
-    # Return the station with best progress, or None if no suitable stations found
+    # Return the station with best combined score, or None if no suitable stations found
     if candidate_stations:
         return candidate_stations[0][0]
     
@@ -281,34 +332,29 @@ def save_optimization_results(results: Dict[str, Any], output_file: str = "optim
     with open(output_file, 'w') as f:
         json.dump(results, f, indent=2)
 
+
 import random
 # Example usage
 if __name__ == "__main__":
     # Load charging stations
     stations = load_charging_stations("data/public_charge_points.csv")
 
-    # Set a seed for random
-    random.seed(42)
+    print(stations[9], stations[17])
+    print(stations[3], stations[4]  )
+    print(stations[12], stations[13])
 
-    # Randomly select 5 integers
-    random_indices = random.sample(range(25), 6)
-    print(random_indices)
 
 
     
     routes = [
         {
-            "start_coord": {"latitude": stations[random_indices[0]].latitude, "longitude": stations[random_indices[0]].longitude},  
-            "end_coord": {"latitude": stations[random_indices[1]].latitude, "longitude": stations[random_indices[1]].longitude}     
+            "start_coord": {"latitude": stations[11].latitude, "longitude": stations[11].longitude},  
+            "end_coord": {"latitude": stations[0].latitude, "longitude": stations[0].longitude}     
         },
         {
-            "start_coord": {"latitude": stations[random_indices[2]].latitude, "longitude": stations[random_indices[2]].longitude},  
-            "end_coord": {"latitude": stations[random_indices[3]].latitude, "longitude": stations[random_indices[3]].longitude}     
+            "start_coord": {"latitude": stations[10].latitude, "longitude": stations[10].longitude},  
+            "end_coord": {"latitude": stations[18].latitude, "longitude": stations[18].longitude}     
         },
-        {
-            "start_coord": {"latitude": stations[random_indices[4]].latitude, "longitude": stations[random_indices[4]].longitude},  
-            "end_coord": {"latitude": stations[random_indices[5]].latitude, "longitude": stations[random_indices[5]].longitude}     
-        }
     ]
     
     # Run optimization
