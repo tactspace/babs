@@ -38,7 +38,7 @@ def get_route(start_point, end_point, vehicle_type="truck"):
         "traffic": "true",
         "routeType": "fastest",
         "travelMode": "truck",
-        # "vehicleMaxSpeed": 90,  # km/h, typical for trucks
+        "vehicleMaxSpeed": 70,  # km/h, typical for trucks
         # "vehicleWeight": 40000,  # kg, for heavy-duty trucks
         # "vehicleAxleWeight": 11000,  # kg
         # "vehicleLength": 16.5,  # meters
@@ -57,7 +57,6 @@ def get_route(start_point, end_point, vehicle_type="truck"):
         
         # Parse and return route data
         route_data = response.json()
-        print(route_data)
         
         # Extract useful information
         if "routes" in route_data and len(route_data["routes"]) > 0:
@@ -157,12 +156,12 @@ def get_ev_route(start_point, end_point, current_charge_kWh, max_charge_kWh, con
 # Example usage (commented out)
 
 # For regular truck routing
-# start = (52.5200, 13.4050)  # Berlin coordinates
-# end = (48.8566, 2.3522)     # Paris coordinates
-# route = get_route(start, end, vehicle_type="truck")
-# # Export route to json file
-# with open('route.json', 'w') as f:
-#     json.dump(route, f)
+start = (52.5200, 13.4050)  # Berlin coordinates
+end = (48.8566, 2.3522)     # Paris coordinates
+route = get_route(start, end, vehicle_type="truck")
+# Export route to json file
+with open('route.json', 'w') as f:
+    json.dump(route["full_response"], f)
 # if route:
 #     print(f"Distance: {route['distance']/1000:.2f} km")
 #     print(f"Duration: {route['duration']/60:.2f} minutes")

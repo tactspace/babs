@@ -1,7 +1,9 @@
 import folium
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 import webbrowser
 import os
+import json
+from folium import FeatureGroup
 
 def plot_route(
     coordinates: List[Dict],
@@ -105,6 +107,242 @@ def plot_route(
     route_map.save(output_file)
     
     # Open the map in a browser if requested
+    if open_browser:
+        webbrowser.open('file://' + os.path.abspath(output_file))
+    
+    return os.path.abspath(output_file)
+
+
+def visualize_report_json(
+    report_path: str = "report.json",
+    output_file: str = "report_visualization.html",
+    open_browser: bool = True
+):
+    """
+    Visualize the optimization results from report.json
+    
+    Args:
+        report_path: Path to the report JSON file
+        output_file: Path to save the HTML map file
+        open_browser: Whether to open the map in browser after creation
+    
+    Returns:
+        Path to the saved HTML file
+    """
+    # Load report data
+    with open(report_path, 'r') as f:
+        report = json.load(f)
+    
+    # Extract routes
+    routes = report.get('routes', [])
+    if not routes:
+        print("No routes found in report")
+        return None
+    
+    # Calculate map center based on all points
+    all_points = []
+    for route in routes:
+        all_points.append(route['start_coord'])
+        all_points.append(route['end_coord'])
+        for iteration in route.get('iterations', []):
+            all_points.append(iteration['start_position'])
+            all_points.append(iteration['end_position'])
+    
+    center_lat = sum(p[0] for p in all_points) / len(all_points)
+    center_lon = sum(p[1] for p in all_points) / len(all_points)
+    
+    # Create map
+    m = folium.Map(location=[center_lat, center_lon], zoom_start=6)
+    
+    # Color palette for routes
+    route_colors = ['blue', 'red', 'green', 'purple', 'orange', 'darkblue', 'darkred', 'darkgreen']
+
+    total_cost = 0
+    total_time_elapsed_minutes = 0
+    total_distance = 0
+    
+    # Add routes to map
+    for i, route in enumerate(routes):
+        route_color = route_colors[i % len(route_colors)]
+        
+        # Create a feature group for this route
+        route_group = folium.FeatureGroup(name=f"Route {i+1}")
+        
+        # Add start and end markers
+        start_coord = route['start_coord']
+        end_coord = route['end_coord']
+        
+        # Start marker
+        folium.Marker(
+            location=start_coord,
+            popup=f"Route {i+1} Start",
+            icon=folium.Icon(color='green', icon='play', prefix='fa')
+        ).add_to(route_group)
+        
+        # End marker
+        folium.Marker(
+            location=end_coord,
+            popup=f"Route {i+1} End",
+            icon=folium.Icon(color='red', icon='stop', prefix='fa')
+        ).add_to(route_group)
+        
+        # Add route segments and charging stations
+        for j, iteration in enumerate(route.get('iterations', [])):
+            start_pos = iteration['start_position']
+            end_pos = iteration['end_position']
+            
+            # Calculate segment metrics
+            distance = iteration.get('distance', 0)
+            time_elapsed_minutes = iteration.get('time_elapsed_minutes', 0)
+            time_hours = time_elapsed_minutes / 60
+            cost_to_company = iteration.get('cost_to_company', 0)
+
+            total_cost += cost_to_company
+            total_time_elapsed_minutes += time_elapsed_minutes
+            total_distance += distance
+
+            # Segment tooltip
+            segment_tooltip = f"""
+            <div style="width: 200px;">
+                <b>Route {i+1}, Segment {j+1}</b><br>
+                Distance: {distance:.1f} km<br>
+                Time: {time_hours:.1f} hours<br>
+                Cost to Company: €{cost_to_company:.2f}
+            </div>
+            """
+            
+            # Draw route segment
+            folium.PolyLine(
+                locations=[start_pos, end_pos],
+                color=route_color,
+                weight=4,
+                opacity=0.8,
+                tooltip=segment_tooltip
+            ).add_to(route_group)
+            
+            # Add charging station marker if available
+            if 'charging_station' in iteration:
+                station = iteration['charging_station']
+                station_name = station.get('name', 'Unknown')
+                station_id = station.get('id', 'Unknown')
+                station_location = station.get('location', end_pos)
+                
+                # Station popup
+                station_popup = f"""
+                <div style="width: 200px;">
+                    <b>{station_name}</b><br>
+                    Station ID: {station_id}<br>
+                    After segment {j+1}
+                </div>
+                """
+                
+                folium.Marker(
+                    location=station_location,
+                    popup=folium.Popup(station_popup, max_width=300),
+                    icon=folium.Icon(color='blue', icon='bolt', prefix='fa')
+                ).add_to(route_group)
+        
+        # Add driver breaks
+        for break_info in route.get('driver_breaks', []):
+            break_type = break_info.get('break_type', '')
+            break_location = break_info.get('location', [0, 0])
+            break_duration_hours = break_info.get('duration', 0) / 3600
+            break_reason = break_info.get('reason', '')
+            
+            # Break popup
+            break_popup = f"""
+            <div style="width: 200px;">
+                <b>{break_type.replace('_', ' ').title()}</b><br>
+                Duration: {break_duration_hours:.1f} hours<br>
+                Reason: {break_reason}
+            </div>
+            """
+            
+            # Icon based on break type
+            if break_type == 'short_break':
+                icon_color = 'orange'
+                icon_name = 'coffee'
+            else:  # long_rest
+                icon_color = 'purple'
+                icon_name = 'bed'
+            
+            folium.Marker(
+                location=break_location,
+                popup=folium.Popup(break_popup, max_width=300),
+                icon=folium.Icon(color=icon_color, icon=icon_name, prefix='fa')
+            ).add_to(route_group)
+        
+        # Add route summary box
+        # total_distance = route.get('total_distance', 0)
+        # total_time_hours = route.get('total_time_elapsed_minutes', 0) / 60
+        # total_cost = route.get('total_cost', 0)
+
+        total_time_hours = total_time_elapsed_minutes / 60
+        
+        summary_html = f'''
+            <div style="position: fixed; 
+                        top: {10 + i*120}px; 
+                        left: 10px; 
+                        width: 250px; 
+                        background-color: white;
+                        padding: 10px;
+                        border-radius: 5px;
+                        border: 2px solid {route_color};
+                        z-index: 9999;">
+                <h4>Route {i+1} Summary</h4>
+                <b>Total Distance:</b> {total_distance:.1f} km<br>
+                <b>Total Time:</b> {total_time_hours:.1f} hours<br>
+                <b>Total Cost:</b> €{total_cost:.2f}<br>
+                <b>Segments:</b> {len(route.get('iterations', []))}<br>
+                <b>Breaks:</b> {len(route.get('driver_breaks', []))}
+            </div>
+        '''
+        m.get_root().html.add_child(folium.Element(summary_html))
+        
+        # Add the route group to the map
+        route_group.add_to(m)
+    
+    
+    # Add legend
+    legend_html = f'''
+        <div style="position: fixed; 
+                    bottom: 20px; 
+                    left: 10px; 
+                    width: 180px; 
+                    background-color: white;
+                    padding: 10px;
+                    border-radius: 5px;
+                    border: 2px solid gray;
+                    z-index: 9999;">
+            <h4>Legend</h4>
+            <div style="display: flex; align-items: center;">
+                <div style="width: 20px; height: 20px; border-radius: 50%; background-color: green; margin-right: 5px;"></div>
+                <span>Start Point</span>
+            </div>
+            <div style="display: flex; align-items: center; margin-top: 5px;">
+                <div style="width: 20px; height: 20px; border-radius: 50%; background-color: red; margin-right: 5px;"></div>
+                <span>End Point</span>
+            </div>
+            <div style="display: flex; align-items: center; margin-top: 5px;">
+                <div style="width: 20px; height: 20px; border-radius: 50%; background-color: blue; margin-right: 5px;"></div>
+                <span>Charging Station</span>
+            </div>
+            <div style="display: flex; align-items: center; margin-top: 5px;">
+                <div style="width: 20px; height: 20px; border-radius: 50%; background-color: orange; margin-right: 5px;"></div>
+                <span>Short Break</span>
+            </div>
+            <div style="display: flex; align-items: center; margin-top: 5px;">
+                <div style="width: 20px; height: 20px; border-radius: 50%; background-color: purple; margin-right: 5px;"></div>
+                <span>Long Rest</span>
+            </div>
+        </div>
+    '''
+    m.get_root().html.add_child(folium.Element(legend_html))
+    
+    # Save the map
+    m.save(output_file)
+    
+    # Open in browser if requested
     if open_browser:
         webbrowser.open('file://' + os.path.abspath(output_file))
     
