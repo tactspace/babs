@@ -4,11 +4,11 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
-# Load API key from environment variable
-TOMTOM_API_KEY = os.getenv("TOMTOM_APIKEY")
-print(TOMTOM_API_KEY)
+# Load API key from environment variable (.env supported)
+# Expected: set TOMTOM_APIKEY (or TOMTOM_API_KEY) to your TomTom key
+TOMTOM_API_KEY = "HT6fpo1XJ5uaJAKZhONSsQHXlLNJOiga"
 
-def get_route(start_point, end_point, vehicle_type="truck"):
+def get_route(start_point, end_point, vehicle_type="truck", route_type: str = "fastest"):
     """
     Get route data between two points using TomTom Routing API
     
@@ -36,7 +36,7 @@ def get_route(start_point, end_point, vehicle_type="truck"):
         "key": TOMTOM_API_KEY,
         # "vehicleType": vehicle_type,
         "traffic": "true",
-        "routeType": "fastest",
+        "routeType": route_type,
         "travelMode": "truck",
         "vehicleMaxSpeed": 70,  # km/h, typical for trucks
         # "vehicleWeight": 40000,  # kg, for heavy-duty trucks
@@ -94,7 +94,7 @@ def get_ev_route(start_point, end_point, current_charge_kWh, max_charge_kWh, con
         dict: Route data including distance, duration, charging stops and coordinates
     """
     if not TOMTOM_API_KEY:
-        raise ValueError("TomTom API key not found. Set the TOMTOM_APIKEY environment variable.")
+        raise ValueError("TomTom API key not found. Set TOMTOM_APIKEY in your environment or .env file.")
         
     # Format coordinates for API request
     start_coord = f"{start_point[0]},{start_point[1]}"

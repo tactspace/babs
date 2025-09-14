@@ -5,3 +5,5 @@ folium
 pandas
 networkx
 matplotlib
+python-dotenv
+openpyxl
