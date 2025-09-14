@@ -11,6 +11,7 @@ export type DriverBreak = {
   start_time?: number;
   duration?: number;
 };
+export type DriverSwap = { location: [number, number]; time: number; reason?: string };
 
 export type RouteLayer = {
   id: string;
@@ -20,6 +21,8 @@ export type RouteLayer = {
   driverBreaks?: DriverBreak[];
   swapPoint?: [number, number] | null;
   highlighted?: boolean;
+  nearbyChargers?: [number, number][];
+  swapEvents?: DriverSwap[];
 };
 
 function FitBounds({ layers }: { layers: RouteLayer[] }) {
@@ -59,8 +62,13 @@ export function SimMap({ layers }: { layers: RouteLayer[] }) {
       {layers.map((layer) => (
         <React.Fragment key={layer.id}>
           <Polyline positions={layer.line} pathOptions={{ color: layer.color, weight: layer.highlighted ? 6 : 4, opacity: layer.highlighted ? 0.9 : 0.7 }} />
+          {(layer.nearbyChargers || []).map((pt, idx) => (
+            <CircleMarker key={`${layer.id}-nc-${idx}`} center={pt} radius={4} pathOptions={{ color: "#6366f1", fillColor: "#6366f1", fillOpacity: 0.8 }}>
+              <Popup>Nearby charging</Popup>
+            </CircleMarker>
+          ))}
           {(layer.chargingStops || []).map((pt, idx) => (
-            <CircleMarker key={`${layer.id}-cs-${idx}`} center={pt} radius={6} pathOptions={{ color: "#0ea5e9", fillColor: "#0ea5e9", fillOpacity: 0.9 }}>
+            <CircleMarker key={`${layer.id}-cs-${idx}`} center={pt} radius={7} pathOptions={{ color: "#0ea5e9", fillColor: "#0ea5e9", fillOpacity: 0.95 }}>
               <Popup>Charging stop</Popup>
             </CircleMarker>
           ))}
@@ -69,11 +77,11 @@ export function SimMap({ layers }: { layers: RouteLayer[] }) {
               <Popup>{brk.break_type.replace("_", " ")}</Popup>
             </CircleMarker>
           ))}
-          {layer.swapPoint && (
-            <CircleMarker center={layer.swapPoint} radius={7} pathOptions={{ color: "#10b981", fillColor: "#10b981", fillOpacity: 1 }}>
-              <Popup>Driver swap</Popup>
+          {(layer.swapEvents || []).map((sw, idx) => (
+            <CircleMarker key={`${layer.id}-sw-${idx}`} center={sw.location} radius={7} pathOptions={{ color: "#10b981", fillColor: "#10b981", fillOpacity: 1 }}>
+              <Popup>{sw.reason || "Driver swap"}</Popup>
             </CircleMarker>
-          )}
+          ))}
         </React.Fragment>
       ))}
     </MapContainer>

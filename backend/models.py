@@ -46,6 +46,25 @@ class DriverBreak(BaseModel):
     duration: float  # in seconds
 
 
+class Driver(BaseModel):
+    """Model representing a driver"""
+    id: str
+    name: str
+    max_continuous_hours: float = 4.5
+    short_break_minutes: float = 45
+    max_daily_hours: float = 9.0
+    long_rest_hours: float = 11.0
+
+
+class DriverSwap(BaseModel):
+    """Driver swap event"""
+    location: Tuple[float, float]
+    time: float  # seconds from start
+    from_driver_id: Optional[str] = None
+    to_driver_id: Optional[str] = None
+    reason: Optional[str] = None
+
+
 class ChargingStop(BaseModel):
     """Model representing a charging stop"""
     charging_station: ChargingStation
@@ -53,6 +72,7 @@ class ChargingStop(BaseModel):
     departure_battery_level: float  # in kWh
     charging_time: float  # in seconds
     charging_cost: float  # in EUR
+    reason: Optional[str] = None
 
 
 class RouteResult(BaseModel):
@@ -65,6 +85,10 @@ class RouteResult(BaseModel):
     route_segments: List[RouteSegment]
     driver_breaks: List[DriverBreak]
     charging_stops: List[ChargingStop]
+    driver_swaps: List[DriverSwap] = []
+    nearby_charging_stations: List[ChargingStation] = []
+    battery_capacity_kwh: Optional[float] = None
+    battery_trace: List[Dict] = []  # items: {"location": (lat,lon), "time": s, "battery_kwh": float, "soc_percent": float}
     feasible: bool  # whether the route is feasible with the given constraints
 
 
@@ -74,3 +98,6 @@ class RouteRequest(BaseModel):
     end_point: Tuple[float, float]  # (latitude, longitude)
     truck_model: str  # reference to a truck model
     initial_battery_level: Optional[float] = None  # in kWh, if None assume full battery
+    optimize_by: Optional[str] = Field(default="time", description="Optimize by 'time' or 'cost'")
+    num_drivers: Optional[int] = Field(default=1, description="Number of available drivers for swapping")
+    driver_ids: Optional[List[str]] = None
