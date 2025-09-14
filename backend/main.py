@@ -1,12 +1,13 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Any
 import os
 
 from models import RouteRequest, RouteResult, Driver
-from routing import find_optimal_route
 from trucks import load_truck_specs
 from charging_stations import load_charging_stations
+from route_calculator import calculate_detailed_route, calculate_multi_route
+from optimizer import optimize_routes
 
 app = FastAPI(title="E-Truck Routing Optimizer")
 
@@ -55,11 +56,8 @@ async def startup_event():
             drivers[did] = Driver(id=did, name=name)
     except Exception:
         # Fallback mock drivers
-        drivers = {
-            "D1": Driver(id="D1", name="Alice"),
-            "D2": Driver(id="D2", name="Bob"),
-            "D3": Driver(id="D3", name="Carlos"),
-        }
+        
+        print("Error loading drivers")
 
 
 @app.get("/")
@@ -124,6 +122,56 @@ async def calculate_route(request: RouteRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/optimize", response_model=RouteResult)
+async def optimize_route(request: RouteRequest):
+    """Optimize route with driver swaps and charging stations"""
+    # Validate truck model
+    if request.truck_model not in truck_specs:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Unknown truck model: {request.truck_model}. Available models: {list(truck_specs.keys())}"
+        )
+    
+    # Convert request to format expected by optimizer
+    routes = [{
+        "start_coord": {"latitude": request.start_point[0], "longitude": request.start_point[1]},
+        "end_coord": {"latitude": request.end_point[0], "longitude": request.end_point[1]}
+    }]
+    
+    # Create driver instances based on request
+    num_drivers = request.num_drivers or 1
+    optimizer_drivers = []
+    for i in range(num_drivers):
+        driver_id = request.driver_ids[i] if request.driver_ids and i < len(request.driver_ids) else i+1
+        optimizer_drivers.append(Driver(
+            id=driver_id, 
+            name=f"Driver {driver_id}",
+            home_location=request.start_point
+        ))
+    
+    try:
+        # Run optimization
+        result = optimize_routes(routes, charging_stations, optimizer_drivers)
+        
+        # Convert result to RouteResult format
+        route_result = RouteResult(
+            total_distance=result["total_distance"] * 1000,  # convert km to meters
+            total_duration=sum(iter["time_elapsed_minutes"] * 60 for iter in result["iterations"]),
+            driving_duration=sum(iter.get("driving_time_seconds", 0) for iter in result["iterations"]),
+            total_energy_consumption=sum(iter.get("energy_consumption", 0) for iter in result["iterations"]),
+            total_cost=sum(iter["sum_cost"] for iter in result["iterations"]),
+            route_segments=[],  # Would need to convert iterations to route segments
+            driver_breaks=[],  # Would need to extract from iterations
+            charging_stops=[],  # Would need to extract from iterations
+            driver_swaps=[],  # Would need to convert from result["truck_swaps"]
+            feasible=True
+        )
+        
+        return route_result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
@@ -132,6 +180,53 @@ async def health_check():
         "loaded_trucks": len(truck_specs),
         "loaded_charging_stations": len(charging_stations)
     }
+
+
+# Add new models for the detailed route API
+from pydantic import BaseModel
+from typing import List, Optional, Tuple
+
+class DetailedRouteRequest(BaseModel):
+    start_point: List[float]
+    end_point: List[float]
+    truck_type: Optional[str] = "electric"
+
+class MultiRouteRequest(BaseModel):
+    routes: List[DetailedRouteRequest]
+
+@app.post("/detailed-route")
+async def get_detailed_route(request: DetailedRouteRequest):
+    """Calculate a route with detailed cost breakdown"""
+    try:
+        start_point = (request.start_point[0], request.start_point[1])
+        end_point = (request.end_point[0], request.end_point[1])
+        
+        result = calculate_detailed_route(
+            start_point=start_point,
+            end_point=end_point,
+            truck_type=request.truck_type
+        )
+        
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/multi-route")
+async def calculate_multiple_routes(request: MultiRouteRequest):
+    """Calculate multiple routes with detailed cost information"""
+    try:
+        routes = []
+        for route in request.routes:
+            routes.append({
+                "start_point": route.start_point,
+                "end_point": route.end_point,
+                "truck_type": route.truck_type
+            })
+        
+        result = calculate_multi_route(routes)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":

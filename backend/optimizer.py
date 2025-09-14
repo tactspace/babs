@@ -594,26 +594,31 @@ if __name__ == "__main__":
     # Load charging stations
     stations = load_charging_stations("data/public_charge_points.csv")
 
+    stations_idx = [11, 0, 10, 18, 21, 3, 16, 6]
+    for idx in stations_idx:
+        print(stations[idx].latitude, stations[idx].longitude)
+
     print(stations[9], stations[17])
     print(stations[3], stations[4]  )
     print(stations[12], stations[13])
     
+    print(f"stations[11] {stations[11]} stations[10] {stations[10]} stations[21] {stations[21]} stations[16] {stations[16]} \nStations {stations[0]} {stations[18]} {stations[3]} {stations[6]}")
     routes = [
-        # {
-        #     "start_coord": {"latitude": stations[11].latitude, "longitude": stations[11].longitude},  
-        #     "end_coord": {"latitude": stations[0].latitude, "longitude": stations[0].longitude}     
-        # },
-        # {
-        #     "start_coord": {"latitude": stations[10].latitude, "longitude": stations[10].longitude},  
-        #     "end_coord": {"latitude": stations[18].latitude, "longitude": stations[18].longitude}     
-        # },
+        {
+            "start_coord": {"latitude": stations[11].latitude, "longitude": stations[11].longitude},  
+            "end_coord": {"latitude": stations[0].latitude, "longitude": stations[0].longitude}     
+        },
+        {
+            "start_coord": {"latitude": stations[10].latitude, "longitude": stations[10].longitude},  
+            "end_coord": {"latitude": stations[18].latitude, "longitude": stations[18].longitude}     
+        },
         {
             "start_coord": {"latitude": stations[21].latitude, "longitude": stations[21].longitude},  
             "end_coord": {"latitude": stations[3].latitude, "longitude": stations[3].longitude}     
         },
         {
-            "start_coord": {"latitude": stations[3].latitude, "longitude": stations[3].longitude},  
-            "end_coord": {"latitude": stations[21].latitude, "longitude": stations[21].longitude}     
+            "start_coord": {"latitude": stations[16].latitude, "longitude": stations[16].longitude},  
+            "end_coord": {"latitude": stations[6].latitude, "longitude": stations[6].longitude}     
         },
     ]
 

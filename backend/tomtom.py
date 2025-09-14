@@ -6,7 +6,7 @@ load_dotenv()
 
 # Load API key from environment variable (.env supported)
 # Expected: set TOMTOM_APIKEY (or TOMTOM_API_KEY) to your TomTom key
-TOMTOM_API_KEY = "HT6fpo1XJ5uaJAKZhONSsQHXlLNJOiga"
+TOMTOM_API_KEY = "Nyl0u6F6ObfkryIqEr3QpvQuHkniwMDT"
 
 def get_route(start_point, end_point, vehicle_type="truck", route_type: str = "fastest"):
     """
@@ -156,12 +156,12 @@ def get_ev_route(start_point, end_point, current_charge_kWh, max_charge_kWh, con
 # Example usage (commented out)
 
 # For regular truck routing
-start = (52.5200, 13.4050)  # Berlin coordinates
-end = (48.8566, 2.3522)     # Paris coordinates
-route = get_route(start, end, vehicle_type="truck")
-# Export route to json file
-with open('route.json', 'w') as f:
-    json.dump(route["full_response"], f)
+# start = (52.5200, 13.4050)  # Berlin coordinates
+# end = (48.8566, 2.3522)     # Paris coordinates
+# route = get_route(start, end, vehicle_type="truck")
+# # Export route to json file
+# with open('route.json', 'w') as f:
+#     json.dump(route["full_response"], f)
 # if route:
 #     print(f"Distance: {route['distance']/1000:.2f} km")
 #     print(f"Duration: {route['duration']/60:.2f} minutes")
