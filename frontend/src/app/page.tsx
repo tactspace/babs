@@ -97,14 +97,34 @@ export default function Home() {
               className="text-4xl md:text-6xl font-bold tracking-tight mb-6 opacity-0 animate-fade-in" 
               style={{ animationDelay: "0.2s", animationFillMode: "forwards" }}
             >
-              Smart Route Planning for E-Truck Fleets
+              AI Route Planning for E-Truck Fleets
             </h1>
             <p 
-              className="text-xl text-muted-foreground max-w-3xl mx-auto opacity-0 animate-fade-in"
+              className="text-xl text-muted-foreground max-w-3xl mx-auto opacity-0 animate-fade-in p-4"
               style={{ animationDelay: "0.4s", animationFillMode: "forwards" }}
             >
               optily is an AI dispatcher that optimizes routes, charging stops, and schedules for electric truck fleets, reducing costs while ensuring on-time deliveries.
             </p>
+            
+            {/* New Book a Call button */}
+            <div 
+              className="mt-8 opacity-0 animate-fade-in"
+              style={{ animationDelay: "0.6s", animationFillMode: "forwards" }}
+            >
+              <a 
+                href="https://calendar.app.google/wFGuAq55LVxxvrEe8"
+                className="inline-flex items-center justify-center rounded-lg text-base font-medium transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 bg-gradient-to-r from-primary to-primary/80 text-primary-foreground hover:scale-105 hover:shadow-[0_0_15px_rgba(59,130,246,0.5)] h-12 px-10 py-6 relative overflow-hidden animate-pulse-slow shadow-md group"
+              >
+                <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent shine-effect"></span>
+                <span className="relative flex items-center gap-2">
+                  Book a Call
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 12h14"></path>
+                    <path d="m12 5 7 7-7 7"></path>
+                  </svg>
+                </span>
+              </a>
+            </div>
           </div>
           
           <div 
@@ -249,16 +269,29 @@ export default function Home() {
       {/* CTA */}
       <section className="py-20">
         <div className="container mx-auto max-w-5xl px-4">
-          <div className="bg-gradient-to-r from-primary to-primary/80 text-primary-foreground rounded-lg p-8 md:p-12 text-center">
-            <h2 className="text-3xl font-bold mb-4">Ready to optimize your e-truck fleet?</h2>
-            <p className="text-lg mb-8 max-w-2xl mx-auto opacity-90">Join the sustainable logistics revolution with optily.eu AI dispatcher</p>
-            <div className="flex gap-4 justify-center flex-wrap">
-              <a 
-                href="https://calendar.app.google/wFGuAq55LVxxvrEe8"
-                className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-primary-foreground/20 bg-transparent hover:bg-primary-foreground/10 h-10 px-6 py-2"
-              >
-                Book a Call
-              </a>
+          <div className="bg-gradient-to-r from-primary to-primary/80 text-primary-foreground rounded-lg p-8 md:p-12 text-center relative overflow-hidden shadow-lg animate-pulse-slow">
+            {/* Shine effect overlay */}
+            <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent shine-effect"></span>
+            
+            {/* Content with relative positioning to appear above the shine effect */}
+            <div className="relative">
+              <h2 className="text-3xl font-bold mb-4">Ready to optimize your e-truck fleet?</h2>
+              <p className="text-lg mb-8 max-w-2xl mx-auto opacity-90">Join the sustainable logistics revolution with optily.eu AI dispatcher</p>
+              <div className="flex gap-4 justify-center flex-wrap">
+                <a 
+                  href="https://calendar.app.google/wFGuAq55LVxxvrEe8"
+                  className="inline-flex items-center justify-center rounded-lg text-base font-medium transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-primary-foreground text-primary hover:scale-105 hover:shadow-[0_0_15px_rgba(255,255,255,0.5)] h-12 px-10 py-6 relative overflow-hidden shadow-md group"
+                >
+                  <span className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/20 to-transparent shine-effect" style={{ animationDelay: "1.5s" }}></span>
+                  <span className="relative flex items-center gap-2">
+                    Book a Call
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M5 12h14"></path>
+                      <path d="m12 5 7 7-7 7"></path>
+                    </svg>
+                  </span>
+                </a>
+              </div>
             </div>
           </div>
         </div>
@@ -357,6 +390,19 @@ export default function Home() {
         
         .animate-blink {
           animation: blink 2s ease-in-out infinite;
+        }
+
+        @keyframes shine {
+          from {
+            transform: translateX(-100%);
+          }
+          to {
+            transform: translateX(100%);
+          }
+        }
+        
+        .shine-effect {
+          animation: shine 3s infinite;
         }
       `}</style>
     </div>
