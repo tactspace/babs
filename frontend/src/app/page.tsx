@@ -28,7 +28,7 @@ export default function Home() {
     // Cycle through steps every 3 seconds
     const interval = setInterval(() => {
       setActiveStep((prev) => (prev + 1) % 3);
-    }, 1000);
+    }, 3000);
     
     return () => clearInterval(interval);
   }, []);
@@ -174,7 +174,7 @@ export default function Home() {
                   <div className="border-l-2 border-primary pl-4 py-1 ml-2">
                     • Start with 90% charge<br/>
                     • Charge in Munich: 60%<br/>
-                    • Total cost: <span className="text-primary font-semibold">€35.20</span><br/>
+                    • Total cost: <span className="text-primary font-semibold">€75.20</span><br/>
                     • Total time: <span className="text-primary font-semibold">8h 15m</span>
                   </div>
                 </div>
