@@ -348,26 +348,26 @@ def visualize_report_json(
         # Add route summary box
         total_time_hours = total_time_elapsed_minutes / 60
         
-        summary_html = f'''
-            <div style="position: fixed; 
-                        top: {10 + i*120}px; 
-                        left: 10px; 
-                        width: 250px; 
-                        background-color: white;
-                        padding: 10px;
-                        border-radius: 5px;
-                        border: 2px solid {route_color};
-                        z-index: 9999;">
-                <h4>Route {i+1} Summary</h4>
-                <b>Initial Driver:</b> {initial_driver_id}<br>
-                <b>Total Distance:</b> {total_distance:.1f} km<br>
-                <b>Total Time:</b> {total_time_hours:.1f} hours<br>
-                <b>Total Cost:</b> €{total_cost:.2f}<br>
-                <b>Segments:</b> {len(route.get('iterations', []))}<br>
-                <b>Breaks:</b> {len(route.get('driver_breaks', []))}
-            </div>
-        '''
-        m.get_root().html.add_child(folium.Element(summary_html))
+        # summary_html = f'''
+        #     <div style="position: fixed; 
+        #                 top: {10 + i*120}px; 
+        #                 left: 10px; 
+        #                 width: 250px; 
+        #                 background-color: white;
+        #                 padding: 10px;
+        #                 border-radius: 5px;
+        #                 border: 2px solid {route_color};
+        #                 z-index: 9999;">
+        #         <h4>Route {i+1} Summary</h4>
+        #         <b>Initial Driver:</b> {initial_driver_id}<br>
+        #         <b>Total Distance:</b> {total_distance:.1f} km<br>
+        #         <b>Total Time:</b> {total_time_hours:.1f} hours<br>
+        #         <b>Total Cost:</b> €{total_cost:.2f}<br>
+        #         <b>Segments:</b> {len(route.get('iterations', []))}<br>
+        #         <b>Breaks:</b> {len(route.get('driver_breaks', []))}
+        #     </div>
+        # '''
+        # m.get_root().html.add_child(folium.Element(summary_html))
         
         # Add the route group to the map
         route_group.add_to(m)

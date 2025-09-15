@@ -213,18 +213,108 @@ async def get_detailed_route(request: DetailedRouteRequest):
 
 @app.post("/multi-route")
 async def calculate_multiple_routes(request: MultiRouteRequest):
-    """Calculate multiple routes with detailed cost information"""
+    """Calculate multiple routes with detailed cost information and comparison with optimized version"""
     try:
-        routes = []
+        # Step 1: Calculate base routes using route_calculator
+        base_routes = []
         for route in request.routes:
-            routes.append({
+            base_routes.append({
                 "start_point": route.start_point,
                 "end_point": route.end_point,
                 "truck_type": route.truck_type
             })
         
-        result = calculate_multi_route(routes)
-        return result
+        base_result = calculate_multi_route(base_routes)
+        
+        # Step 2: Calculate optimized routes for each route separately
+        for i, (route, base_route_result) in enumerate(zip(request.routes, base_result["routes"])):
+            # Create a single route for optimization
+            opt_route = [{
+                "start_coord": {"latitude": route.start_point[0], "longitude": route.start_point[1]},
+                "end_coord": {"latitude": route.end_point[0], "longitude": route.end_point[1]}
+            }]
+            
+            # Create 2 drivers for optimization
+            opt_drivers = [
+                Driver(
+                    id=1,
+                    name="Driver 1",
+                    home_location=(route.start_point[0], route.start_point[1])
+                ),
+                Driver(
+                    id=2,
+                    name="Driver 2",
+                    home_location=(route.start_point[0], route.start_point[1])
+                )
+            ]
+            
+            try:
+                # Run optimization for this single route
+                opt_result = optimize_routes(opt_route, charging_stations, opt_drivers)
+                
+                # Calculate route-specific comparison
+                route_comparison = {
+                    "base": {
+                        "total_cost": base_route_result["total_cost"],
+                        "total_duration": base_route_result["total_duration"],
+                        "total_energy": base_route_result["total_energy_consumption"],
+                        "total_distance": base_route_result["total_distance"]
+                    },
+                    "optimized": {
+                        "total_cost": sum(iter.get("sum_cost", 0) for iter in opt_result.get("iterations", [])),
+                        "total_duration": sum(iter.get("time_elapsed_minutes", 0) * 60 for iter in opt_result.get("iterations", [])),
+                        "total_energy": opt_result.get("total_distance", 0) * 1.2,  # Estimate energy based on distance
+                        "total_distance": opt_result.get("total_distance", 0) * 1000  # convert km to meters
+                    }
+                }
+                
+                # Calculate savings
+                route_comparison["savings"] = {
+                    "cost": route_comparison["base"]["total_cost"] - route_comparison["optimized"]["total_cost"],
+                    "cost_percentage": ((route_comparison["base"]["total_cost"] - route_comparison["optimized"]["total_cost"]) / route_comparison["base"]["total_cost"]) * 100 if route_comparison["base"]["total_cost"] > 0 else 0,
+                    "duration": route_comparison["base"]["total_duration"] - route_comparison["optimized"]["total_duration"],
+                    "duration_percentage": ((route_comparison["base"]["total_duration"] - route_comparison["optimized"]["total_duration"]) / route_comparison["base"]["total_duration"]) * 100 if route_comparison["base"]["total_duration"] > 0 else 0,
+                    "energy": route_comparison["base"]["total_energy"] - route_comparison["optimized"]["total_energy"],
+                    "energy_percentage": ((route_comparison["base"]["total_energy"] - route_comparison["optimized"]["total_energy"]) / route_comparison["base"]["total_energy"]) * 100 if route_comparison["base"]["total_energy"] > 0 else 0
+                }
+                
+                # Add comparison to the route result
+                base_route_result["comparison"] = route_comparison
+                
+            except Exception as e:
+                print(f"Error optimizing route {i}: {e}")
+                # Continue with other routes if one fails
+        
+        # Step 3: Create overall comparison
+        overall_comparison = {
+            "base": {
+                "total_cost": base_result["total_cost"],
+                "total_duration": base_result["total_duration"],
+                "total_energy": sum(r["total_energy_consumption"] for r in base_result["routes"]),
+                "total_distance": base_result["total_distance"]
+            },
+            "optimized": {
+                "total_cost": sum(r.get("comparison", {}).get("optimized", {}).get("total_cost", 0) for r in base_result["routes"]),
+                "total_duration": sum(r.get("comparison", {}).get("optimized", {}).get("total_duration", 0) for r in base_result["routes"]),
+                "total_energy": sum(r.get("comparison", {}).get("optimized", {}).get("total_energy", 0) for r in base_result["routes"]),
+                "total_distance": sum(r.get("comparison", {}).get("optimized", {}).get("total_distance", 0) for r in base_result["routes"])
+            }
+        }
+        
+        # Calculate overall savings
+        overall_comparison["savings"] = {
+            "cost": overall_comparison["base"]["total_cost"] - overall_comparison["optimized"]["total_cost"],
+            "cost_percentage": ((overall_comparison["base"]["total_cost"] - overall_comparison["optimized"]["total_cost"]) / overall_comparison["base"]["total_cost"]) * 100 if overall_comparison["base"]["total_cost"] > 0 else 0,
+            "duration": overall_comparison["base"]["total_duration"] - overall_comparison["optimized"]["total_duration"],
+            "duration_percentage": ((overall_comparison["base"]["total_duration"] - overall_comparison["optimized"]["total_duration"]) / overall_comparison["base"]["total_duration"]) * 100 if overall_comparison["base"]["total_duration"] > 0 else 0,
+            "energy": overall_comparison["base"]["total_energy"] - overall_comparison["optimized"]["total_energy"],
+            "energy_percentage": ((overall_comparison["base"]["total_energy"] - overall_comparison["optimized"]["total_energy"]) / overall_comparison["base"]["total_energy"]) * 100 if overall_comparison["base"]["total_energy"] > 0 else 0
+        }
+        
+        # Add overall comparison to result
+        base_result["comparison"] = overall_comparison
+        
+        return base_result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

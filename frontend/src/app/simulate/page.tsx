@@ -41,6 +41,7 @@ type RouteResult = {
   nearby_charging_stations?: { latitude: number; longitude: number }[];
   feasible: boolean;
   driver_swaps?: DriverSwap[];
+  comparison?: RouteComparison;  // Add this field
 };
 
 type RouteEntry = {
@@ -52,6 +53,77 @@ type RouteEntry = {
   truck: string;
   optimizeBy: "time" | "cost";
   numDrivers: number;
+};
+
+type Comparison = {
+  base: {
+    total_cost: number;
+    total_duration: number;
+    total_energy: number;
+    total_distance: number;
+  };
+  optimized: {
+    total_cost: number;
+    total_duration: number;
+    total_energy: number;
+    total_distance: number;
+  };
+  savings: {
+    cost: number;
+    cost_percentage: number;
+    duration: number;
+    duration_percentage: number;
+    energy: number;
+    energy_percentage: number;
+  };
+};
+
+type MultiRouteResult = {
+  routes: RouteResult[];
+  total_distance: number;
+  total_duration: number;
+  total_cost: number;
+  comparison?: Comparison;
+};
+
+// First, let's modify the RouteResult type to include route-specific comparison data
+type RouteComparison = {
+  base: {
+    total_cost: number;
+    total_duration: number;
+    total_energy: number;
+    total_distance: number;
+  };
+  optimized: {
+    total_cost: number;
+    total_duration: number;
+    total_energy: number;
+    total_distance: number;
+  };
+  savings: {
+    cost: number;
+    cost_percentage: number;
+    duration: number;
+    duration_percentage: number;
+    energy: number;
+    energy_percentage: number;
+  };
+};
+
+// Update the RouteResult type
+type RouteResult = {
+  total_distance: number;
+  total_duration: number;
+  driving_duration: number;
+  total_energy_consumption: number;
+  total_cost: number;
+  route_segments: RouteSegment[];
+  driver_breaks: DriverBreak[];
+  charging_stops: ChargingStop[];
+  nearby_charging_stations?: { latitude: number; longitude: number }[];
+  feasible: boolean;
+  driver_swaps?: DriverSwap[];
+  comparison?: RouteComparison;  // Add this field
 };
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
@@ -102,10 +174,10 @@ export default function SimulatePage() {
       // Route 2: Location 1 to Location 2
       {
         id: crypto.randomUUID(),
-        startLat: predefinedLocations[1].lat,
-        startLng: predefinedLocations[1].lng,
-        endLat: predefinedLocations[2].lat,
-        endLng: predefinedLocations[2].lng,
+        startLat: predefinedLocations[2].lat,
+        startLng: predefinedLocations[2].lng,
+        endLat: predefinedLocations[3].lat,
+        endLng: predefinedLocations[3].lng,
         truck: "",
         optimizeBy: "cost",
         numDrivers: 1
@@ -113,10 +185,10 @@ export default function SimulatePage() {
       // Route 3: Location 2 to Location 3
       {
         id: crypto.randomUUID(),
-        startLat: predefinedLocations[2].lat,
-        startLng: predefinedLocations[2].lng,
-        endLat: predefinedLocations[3].lat,
-        endLng: predefinedLocations[3].lng,
+        startLat: predefinedLocations[4].lat,
+        startLng: predefinedLocations[4].lng,
+        endLat: predefinedLocations[5].lat,
+        endLng: predefinedLocations[5].lng,
         truck: "",
         optimizeBy: "time",
         numDrivers: 2
@@ -227,7 +299,7 @@ export default function SimulatePage() {
       });
       
       if (!res.ok) throw new Error(await res.text());
-      const multiResult = await res.json();
+      const multiResult = await res.json() as MultiRouteResult;
       
       entries.forEach((e, idx) => {
         if (idx < multiResult.routes.length) {
@@ -415,34 +487,38 @@ export default function SimulatePage() {
                         <div>Energy: {r.total_energy_consumption?.toFixed?.(1) ?? r.total_energy_consumption} kWh</div>
                       </div>
                       
-                      {/* Show comparison if both results are available */}
-                      {simResult && !("error" in simResult) && optResult && !("error" in optResult) && (
-                        <div className="mt-3 p-2 bg-muted/30 rounded-md">
-                          <div className="font-medium mb-1">Comparison</div>
+                      {/* Route-specific comparison */}
+                      {r.comparison && (
+                        <div className="mt-2 p-2 bg-muted/30 rounded-md">
+                          <div className="font-medium mb-1">Comparison with Optimized Route</div>
                           <div className="grid grid-cols-3 gap-2 text-xs">
                             <div></div>
-                            <div className="font-medium">Simulation</div>
-                            <div className="font-medium">Optimization</div>
+                            <div className="font-medium">Base</div>
+                            <div className="font-medium">Optimized</div>
                             
                             <div>Duration:</div>
-                            <div>{(simResult.total_duration / 3600).toFixed(2)} h</div>
-                            <div className={optResult.total_duration < simResult.total_duration ? "text-green-600 font-medium" : ""}>
-                              {(optResult.total_duration / 3600).toFixed(2)} h
-                              {optResult.total_duration < simResult.total_duration && 
-                                ` (${(100 - (optResult.total_duration / simResult.total_duration) * 100).toFixed(1)}% faster)`}
+                            <div>{(r.comparison.base.total_duration / 3600).toFixed(2)} h</div>
+                            <div className={r.comparison.savings.duration > 0 ? "text-green-600 font-medium" : ""}>
+                              {(r.comparison.optimized.total_duration / 3600).toFixed(2)} h
+                              {r.comparison.savings.duration > 0 && 
+                                ` (${r.comparison.savings.duration_percentage.toFixed(1)}% faster)`}
                             </div>
                             
                             <div>Cost:</div>
-                            <div>€ {simResult.total_cost?.toFixed?.(2) ?? simResult.total_cost}</div>
-                            <div className={optResult.total_cost < simResult.total_cost ? "text-green-600 font-medium" : ""}>
-                              € {optResult.total_cost?.toFixed?.(2) ?? optResult.total_cost}
-                              {optResult.total_cost < simResult.total_cost && 
-                                ` (${(100 - (optResult.total_cost / simResult.total_cost) * 100).toFixed(1)}% cheaper)`}
+                            <div>€ {r.comparison.base.total_cost.toFixed(2)}</div>
+                            <div className={r.comparison.savings.cost > 0 ? "text-green-600 font-medium" : ""}>
+                              € {r.comparison.optimized.total_cost.toFixed(2)}
+                              {r.comparison.savings.cost > 0 && 
+                                ` (${r.comparison.savings.cost_percentage.toFixed(1)}% cheaper)`}
                             </div>
                             
                             <div>Energy:</div>
-                            <div>{simResult.total_energy_consumption?.toFixed?.(1) ?? simResult.total_energy_consumption} kWh</div>
-                            <div>{optResult.total_energy_consumption?.toFixed?.(1) ?? optResult.total_energy_consumption} kWh</div>
+                            <div>{r.comparison.base.total_energy.toFixed(1)} kWh</div>
+                            <div className={r.comparison.savings.energy > 0 ? "text-green-600 font-medium" : ""}>
+                              {r.comparison.optimized.total_energy.toFixed(1)} kWh
+                              {r.comparison.savings.energy > 0 && 
+                                ` (${r.comparison.savings.energy_percentage.toFixed(1)}% less)`}
+                            </div>
                           </div>
                         </div>
                       )}

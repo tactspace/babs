@@ -20,22 +20,31 @@ NEAR_RENDEZVOUS_RADIUS_KM = 300
 
 def get_distance_between_stations(station1_coords: Tuple[float, float], station2_coords: Tuple[float, float], charging_stations: List[ChargingStation]) -> float:
     """Get the distance between two stations"""
-    with open('graph_computation.json', 'r') as f:
-        distance_cache = json.load(f)
-
-    # find station ids from coords
-    station1_id = next((station.id for station in charging_stations if station.latitude == station1_coords[0] and station.longitude == station1_coords[1]), None)
-    station2_id = next((station.id for station in charging_stations if station.latitude == station2_coords[0] and station.longitude == station2_coords[1]), None)
-
-    print(station1_id, station2_id)
     try:
-        res =  distance_cache[f"{station1_id}_{station2_id}"]["api_response"]["routes"][0]["summary"]["lengthInMeters"] / 1000
+        with open('graph_computation.json', 'r') as f:
+            distance_cache = json.load(f)
+
+        # find station ids from coords
+        station1_id = next((station.id for station in charging_stations if station.latitude == station1_coords[0] and station.longitude == station1_coords[1]), None)
+        station2_id = next((station.id for station in charging_stations if station.latitude == station2_coords[0] and station.longitude == station2_coords[1]), None)
+
+        if station1_id is not None and station2_id is not None:
+            cache_key = f"{station1_id}_{station2_id}"
+            if cache_key in distance_cache:
+                return distance_cache[cache_key]["api_response"]["routes"][0]["summary"]["lengthInMeters"] / 1000
     except Exception as e:
-        print(f"Error getting distance between {station1_coords} and {station2_coords}: {e}")
+        print(f"Cache lookup failed: {e}")
+    
+    # Fallback to TomTom API
     dist = get_route(station1_coords, station2_coords)
-    res = dist["distance"] / 1000
-    print(f"Distance between {station1_coords} and {station2_coords} is {res} km")
-    return res
+    if dist:
+        res = dist["distance"] / 1000
+        print(f"Distance between {station1_coords} and {station2_coords} is {res} km")
+        return res
+    else:
+        # If API call fails, use haversine distance as last resort
+        from charging_stations import calculate_distance
+        return calculate_distance(station1_coords, station2_coords)
 
 def optimize_routes(
     routes: List[Dict], 
@@ -231,48 +240,50 @@ def optimize_routes(
                 route_end_coords
             )
             
-            # Apply the best swap
+            # Apply multiple non-conflicting swaps greedily per iteration
             if potential_swaps:
-                swap = potential_swaps[0]  # Take the best swap
-                
-                # Update driver assignments
-                driver1_id = swap["driver1_id"]
-                driver2_id = swap["driver2_id"]
-                
-                # Find the drivers
-                driver1 = next(d for d in drivers if d.id == driver1_id)
-                driver2 = next(d for d in drivers if d.id == driver2_id)
-                
-                # Swap truck assignments
-                temp_truck = driver1.current_truck_id
-                driver1.current_truck_id = driver2.current_truck_id
-                driver2.current_truck_id = temp_truck
-                
-                # Record the swap for both involved iterations so the visualizer can match per route
-                results["truck_swaps"].append({
-                    "station_id": swap["station_id"],
-                    "driver1_id": driver1_id,
-                    "driver2_id": driver2_id,
-                    "benefit_km": swap.get("benefit_km", 0.0),
-                    "alignment_dot": swap.get("alignment_dot"),
-                    "reason": swap.get("reason", "same_station"),
-                    "station_location": swap.get("station_location"),
-                    "detour_km_total": swap.get("detour_km_total", 0.0),
-                    "iteration": swap["iteration1"]["iteration"],
-                    "global_iteration": global_iteration
-                })
-                results["truck_swaps"].append({
-                    "station_id": swap["station_id"],
-                    "driver1_id": driver1_id,
-                    "driver2_id": driver2_id,
-                    "benefit_km": swap.get("benefit_km", 0.0),
-                    "alignment_dot": swap.get("alignment_dot"),
-                    "reason": swap.get("reason", "same_station"),
-                    "station_location": swap.get("station_location"),
-                    "detour_km_total": swap.get("detour_km_total", 0.0),
-                    "iteration": swap["iteration2"]["iteration"],
-                    "global_iteration": global_iteration
-                })
+                used_drivers: set = set()
+                for swap in potential_swaps:
+                    d1 = swap["driver1_id"]
+                    d2 = swap["driver2_id"]
+                    if d1 in used_drivers or d2 in used_drivers:
+                        continue
+                    # Perform swap
+                    driver1 = next(d for d in drivers if d.id == d1)
+                    driver2 = next(d for d in drivers if d.id == d2)
+                    temp_truck = driver1.current_truck_id
+                    driver1.current_truck_id = driver2.current_truck_id
+                    driver2.current_truck_id = temp_truck
+                    used_drivers.add(d1)
+                    used_drivers.add(d2)
+
+                    # Record for both involved iterations so the visualizer can match per route
+                    results["truck_swaps"].append({
+                        "station_id": swap["station_id"],
+                        "driver1_id": d1,
+                        "driver2_id": d2,
+                        "benefit_km": swap.get("benefit_km", 0.0),
+                        "alignment_dot": swap.get("alignment_dot"),
+                        "reason": swap.get("reason", "same_station"),
+                        "station_location": swap.get("station_location"),
+                        "detour_km_total": swap.get("detour_km_total", 0.0),
+                        "iteration": swap["iteration1"]["iteration"],
+                        "route_idx": swap["iteration1"]["route_idx"],
+                        "global_iteration": global_iteration
+                    })
+                    results["truck_swaps"].append({
+                        "station_id": swap["station_id"],
+                        "driver1_id": d1,
+                        "driver2_id": d2,
+                        "benefit_km": swap.get("benefit_km", 0.0),
+                        "alignment_dot": swap.get("alignment_dot"),
+                        "reason": swap.get("reason", "same_station"),
+                        "station_location": swap.get("station_location"),
+                        "detour_km_total": swap.get("detour_km_total", 0.0),
+                        "iteration": swap["iteration2"]["iteration"],
+                        "route_idx": swap["iteration2"]["route_idx"],
+                        "global_iteration": global_iteration
+                    })
         
         # Check if all routes are completed
         all_completed = all(route_state["completed"] for route_state in route_states)
@@ -594,15 +605,10 @@ if __name__ == "__main__":
     # Load charging stations
     stations = load_charging_stations("data/public_charge_points.csv")
 
-    stations_idx = [11, 0, 10, 18, 21, 3, 16, 6]
-    for idx in stations_idx:
-        print(stations[idx].latitude, stations[idx].longitude)
-
     print(stations[9], stations[17])
     print(stations[3], stations[4]  )
     print(stations[12], stations[13])
     
-    print(f"stations[11] {stations[11]} stations[10] {stations[10]} stations[21] {stations[21]} stations[16] {stations[16]} \nStations {stations[0]} {stations[18]} {stations[3]} {stations[6]}")
     routes = [
         {
             "start_coord": {"latitude": stations[11].latitude, "longitude": stations[11].longitude},  
@@ -626,6 +632,8 @@ if __name__ == "__main__":
     drivers = [
         Driver(id=1, name="Driver Lubeck", home_location=(stations[11].latitude, stations[11].longitude)),
         Driver(id=2, name="Driver Ulm", home_location=(stations[10].latitude, stations[10].longitude)),
+        Driver(id=3, name="Fred Again", home_location=(stations[21].latitude, stations[21].longitude)),
+        Driver(id=4, name="Donnie Darko", home_location=(stations[16].latitude, stations[16].longitude)),
     ]
 
     # Run optimization
@@ -644,4 +652,10 @@ if __name__ == "__main__":
     # Visualize the results
     visualize_report_json("report.json", "report_visualization.html")
 
-
+    # Run base versions for the same routes
+    # from base_route_calculator import calculate_base_routes
+    # base_results = calculate_base_routes(routes, stations)
+    # save_optimization_results(base_results, "base_report.json")
+    # from base_route_calculator import visualize_base_routes
+    # visualize_base_routes(base_results, "base_report_visualization.html")
+    # visualize_report_json("base_report.json", "base_report_visualization.html")
