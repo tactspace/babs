@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
+import "../styles/globals.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -15,6 +15,10 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "optily.eu",
   description: "optily.eu is an AI dispatcher that optimizes routes, charging & resting stops as per the EU regulations, and schedules for electric truck fleets, reducing costs while ensuring on-time deliveries.",
+  icons: {
+    icon: '/favicon.png',
+    
+  },
 };
 
 export default function RootLayout({
