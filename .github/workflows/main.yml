@@ -32,8 +32,9 @@ jobs:
         run: |
           ssh githubcicd@${{ secrets.VM_IP }} << 'EOF'
             cd /home/githubcicd/optily/frontend
+            sudo docker build --no-cache -t optily-fe .
             sudo docker stop optily-fe || true
             sudo docker rm optily-fe || true
-            sudo docker build --no-cache -t optily-fe .
+            sudo docker tag optily-fe:new optily-fe
             sudo docker run -d --name optily-fe --env-file .env.production -p 3005:3000 optily-fe
           EOF
