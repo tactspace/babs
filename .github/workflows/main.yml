@@ -1,0 +1,39 @@
+name: Deploy New Service to Azure VM
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Add VM to known_hosts
+        run: |
+          ssh-keyscan ${{ secrets.VM_IP }} >> ~/.ssh/known_hosts
+
+      - name: Rsync files to VM
+        run: |
+          rsync -avz \
+            --exclude=".git" \
+            ./ githubcicd@${{ secrets.VM_IP }}:/home/githubcicd/optily/
+
+      - name: Build and run new Docker container
+        run: |
+          ssh githubcicd@${{ secrets.VM_IP }} << 'EOF'
+            cd /home/githubcicd/optily/frontend
+            sudo docker stop optily-fe || true
+            sudo docker rm optily-fe || true
+            sudo docker build --no-cache -t optily-fe .
+            sudo docker run -d --name optily-fe --env-file .env.production -p 3005:3000 optily-fe
+          EOF
