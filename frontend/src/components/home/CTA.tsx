@@ -1,4 +1,5 @@
-// CTASection.tsx
+"use client";
+
 export default function CTA() {
     return (
       <section className="py-20">

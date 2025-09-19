@@ -1,4 +1,5 @@
-// AnimationStyles.tsx
+"use client";
+
 export default function AnimationStyles() {
   return (
     <style jsx global>{`

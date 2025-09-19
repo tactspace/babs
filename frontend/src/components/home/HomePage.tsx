@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect } from "react";
-import Header from "./components/Header";
-import HeroSection from "./components/HeroSection";
-import FeaturesGrid from "./components/FeatureGrid";
-import HowItWorksSection from "./components/HowItWorks";
-import CTASection from "./components/CTA";
-import Footer from "./components/Footer";
-import AnimationStyles from "./components/AnimationStyles";
+import Header from "../../components/home/Header";
+import HeroSection from "../../components/home/HeroSection";
+import FeaturesGrid from "../../components/home/FeatureGrid";
+import HowItWorksSection from "../../components/home/HowItWorks";
+import CTASection from "../../components/home/CTA";
+import Footer from "../../components/home/Footer";
+import AnimationStyles from "../../components/home/AnimationStyles";
 
 export default function HomePage() {
   useEffect(() => {

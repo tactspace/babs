@@ -1,4 +1,5 @@
-// HeroSection.tsx
+"use client";
+
 export default function HeroSection() {
     return (
       <section className="pt-28  px-4">
