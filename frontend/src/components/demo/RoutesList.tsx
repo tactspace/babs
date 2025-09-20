@@ -12,7 +12,7 @@ interface RoutesListProps {
 
 export default function RoutesList({ routes, activeRouteId, onRouteSelect, onRouteDelete, onClearAll }: RoutesListProps) {
   return (
-    <div className="flex-1 px-10 pb-8 overflow-hidden">
+    <div className="flex-1 px-10 pb-12 overflow-hidden">
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-lg font-bold">Routes</h2>
         {routes.length > 0 && (
@@ -26,7 +26,7 @@ export default function RoutesList({ routes, activeRouteId, onRouteSelect, onRou
         )}
       </div>
       
-      <div className="space-y-3 overflow-y-auto h-full">
+      <div className="space-y-3 overflow-y-auto h-full pb-4">
         {routes.length === 0 ? (
           <div className="text-center py-8 text-gray-500">
             <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -50,18 +50,18 @@ export default function RoutesList({ routes, activeRouteId, onRouteSelect, onRou
                   {route.start.lat.toFixed(2)}, {route.start.lng.toFixed(2)} → {route.end.lat.toFixed(2)}, {route.end.lng.toFixed(2)}
                 </div>
               </div>
-                <button 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onRouteDelete(route.id);
-                  }}
-                  className="p-1 text-gray-500 hover:text-red-500 transition-colors"
-                  title="Delete route"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                </button>
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRouteDelete(route.id);
+                }}
+                className="p-1 text-gray-500 hover:text-red-500 transition-colors"
+                title="Delete route"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </button>
             </div>
           ))
         )}
