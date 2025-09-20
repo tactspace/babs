@@ -5,80 +5,23 @@ const createLocationMarkerIcon = (hexColor: string = "#ef4444"): L.DivIcon => {
   return L.divIcon({
     className: "location-marker",
     html: `
-      <style>
-        @keyframes pulse {
-          0% { transform: scale(1); opacity: 1; }
-          50% { transform: scale(1.1); opacity: 0.8; }
-          100% { transform: scale(1); opacity: 1; }
-        }
-        @keyframes glow {
-          0% { opacity: 0.5; }
-          50% { opacity: 0.8; }
-          100% { opacity: 0.5; }
-        }
-      </style>
-      <div style="
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        filter: drop-shadow(0 0 8px rgba(0, 0, 0, 0.3));
-        animation: pulse 1.5s infinite ease-in-out;
-        transform-origin: center bottom;
-      ">
+      <div class="location-marker-container">
         <!-- Circle -->
-        <div style="
-          width: 1.5rem; 
-          height: 1.5rem; 
-          background-color: ${hexColor}; 
-          border-radius: 50%; 
-          border: 1px solid black; 
-          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
-          display: flex; 
-          align-items: center; 
-          justify-content: center;
-          position: relative;
-          z-index: 2;
-        ">
+        <div class="location-marker-circle" style="background-color: ${hexColor};">
           <!-- Center dot -->
-          <div style="width: 0.5rem; height: 0.5rem; background-color: black; border-radius: 50%;"></div>
+          <div class="location-marker-dot"></div>
           
           <!-- Glow effect -->
-          <div style="
-            position: absolute;
-            width: 2.5rem;
-            height: 2.5rem;
-            background: radial-gradient(circle, ${hexColor}50 0%, transparent 70%);
-            border-radius: 50%;
-            z-index: -1;
-            animation: glow 2s infinite ease-in-out;
-          "></div>
+          <div class="location-marker-glow" style="background: radial-gradient(circle, ${hexColor}50 0%, transparent 70%);"></div>
         </div>
         
         <!-- Vertical line -->
-        <div style="position: relative; z-index: 1; margin-top: -2px;">
+        <div class="location-marker-line-container">
           <!-- Black outline -->
-          <div style="
-            position: absolute;
-            top: 0;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 4px;
-            height: 16px;
-            background-color: black;
-            border-radius: 0 0 2px 2px;
-          "></div>
+          <div class="location-marker-line-outline"></div>
           
           <!-- Colored line -->
-          <div style="
-            position: absolute;
-            top: 1px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 2px;
-            height: 14px;
-            background-color: ${hexColor};
-            border-radius: 0 0 1px 1px;
-          "></div>
+          <div class="location-marker-line" style="background-color: ${hexColor};"></div>
         </div>
       </div>
     `,
@@ -118,5 +61,38 @@ export const getMarkerByType = (type: "start" | "end" | "waypoint" | "default" =
 export const createCustomMarker = (hexColor: string): L.DivIcon => {
   return createLocationMarkerIcon(hexColor);
 };
+
+export const activeHighlightMarker = (hexColor: string = "#FF2A00"): L.DivIcon => {
+    return L.divIcon({
+      className: "location-marker-active",
+      html: `
+        <div class="location-marker-container-active">
+          <!-- Outer ring for emphasis -->
+          <div class="location-marker-ring" style="border: 3px solid ${hexColor};"></div>
+          
+          <!-- Circle -->
+          <div class="location-marker-circle-active" style="background-color: ${hexColor};">
+            <!-- Center dot -->
+            <div class="location-marker-dot-active"></div>
+            
+            <!-- Enhanced glow effect -->
+            <div class="location-marker-glow-active" style="background: radial-gradient(circle, ${hexColor}80 0%, transparent 70%);"></div>
+          </div>
+          
+          <!-- Vertical line -->
+          <div class="location-marker-line-container-active">
+            <!-- Black outline -->
+            <div class="location-marker-line-outline-active"></div>
+            
+            <!-- Colored line -->
+            <div class="location-marker-line-active" style="background-color: ${hexColor};"></div>
+          </div>
+        </div>
+      `,
+      iconSize: [40, 56], // Larger than default (32, 44)
+      iconAnchor: [20, 50],
+      popupAnchor: [0, -50],
+    });
+  };
 
 export default createLocationMarkerIcon;

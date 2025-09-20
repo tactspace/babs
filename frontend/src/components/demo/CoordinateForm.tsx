@@ -1,74 +1,235 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, FormEvent, useRef } from "react";
 
 interface CoordinateFormProps {
-  onSubmit: (lat: number, lng: number) => void;
+  onSubmit: (startLat: number, startLng: number, endLat: number, endLng: number, name?: string) => void;
+  onImportCSV?: (routes: Array<{name: string, startLat: number, startLng: number, endLat: number, endLng: number}>) => void;
 }
 
-export default function CoordinateForm({ onSubmit }: CoordinateFormProps) {
-  const [latitude, setLatitude] = useState("52.3676");
-  const [longitude, setLongitude] = useState("4.9041");
+export default function CoordinateForm({ onSubmit, onImportCSV }: CoordinateFormProps) {
+  const [startLatitude, setStartLatitude] = useState("");
+  const [startLongitude, setStartLongitude] = useState("");
+  const [endLatitude, setEndLatitude] = useState("");
+  const [endLongitude, setEndLongitude] = useState("");
+  const [routeName, setRouteName] = useState("");
   const [error, setError] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     setError("");
 
-    const lat = parseFloat(latitude);
-    const lng = parseFloat(longitude);
+    const startLat = parseFloat(startLatitude);
+    const startLng = parseFloat(startLongitude);
+    const endLat = parseFloat(endLatitude);
+    const endLng = parseFloat(endLongitude);
 
-    if (isNaN(lat) || isNaN(lng)) {
+    if (isNaN(startLat) || isNaN(startLng) || isNaN(endLat) || isNaN(endLng)) {
       setError("Please enter valid numeric coordinates");
       return;
     }
 
-    if (lat < -90 || lat > 90) {
+    if (startLat < -90 || startLat > 90 || endLat < -90 || endLat > 90) {
       setError("Latitude must be between -90 and 90 degrees");
       return;
     }
 
-    if (lng < -180 || lng > 180) {
+    if (startLng < -180 || startLng > 180 || endLng < -180 || endLng > 180) {
       setError("Longitude must be between -180 and 180 degrees");
       return;
     }
 
-    onSubmit(lat, lng);
+    onSubmit(startLat, startLng, endLat, endLng, routeName);
+    
+    // Clear the form after successful submission
+    clearForm();
+  };
+
+  const clearForm = () => {
+    setRouteName("");
+    setStartLatitude("");
+    setStartLongitude("");
+    setEndLatitude("");
+    setEndLongitude("");
+  };
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      setError("Please select a CSV file");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const csvText = e.target?.result as string;
+        const routes = parseCSV(csvText);
+        
+        if (routes.length === 0) {
+          setError("No valid routes found in CSV file");
+          return;
+        }
+
+        if (onImportCSV) {
+          onImportCSV(routes);
+          setError(""); // Clear any previous errors
+        }
+      } catch (error) {
+        setError(`Error reading CSV file. Please check the format. ${error}`);
+      }
+    };
+
+    reader.readAsText(file);
+    
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const parseCSV = (csvText: string): Array<{name: string, startLat: number, startLng: number, endLat: number, endLng: number}> => {
+    const lines = csvText.trim().split('\n');
+    const routes: Array<{name: string, startLat: number, startLng: number, endLat: number, endLng: number}> = [];
+
+    // Skip header row if it exists
+    const startIndex = lines[0].toLowerCase().includes('route_name') ? 1 : 0;
+
+    for (let i = startIndex; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+
+      // Split by comma and handle quoted values
+      const columns = line.split(',').map(col => col.trim().replace(/^"|"$/g, ''));
+      
+      if (columns.length < 5) {
+        console.warn(`Skipping line ${i + 1}: insufficient columns`);
+        continue;
+      }
+
+      const [name, startLatStr, startLngStr, endLatStr, endLngStr] = columns;
+      
+      const startLat = parseFloat(startLatStr);
+      const startLng = parseFloat(startLngStr);
+      const endLat = parseFloat(endLatStr);
+      const endLng = parseFloat(endLngStr);
+
+      // Validate coordinates
+      if (isNaN(startLat) || isNaN(startLng) || isNaN(endLat) || isNaN(endLng)) {
+        console.warn(`Skipping line ${i + 1}: invalid coordinates`);
+        continue;
+      }
+
+      if (startLat < -90 || startLat > 90 || endLat < -90 || endLat > 90) {
+        console.warn(`Skipping line ${i + 1}: latitude out of range`);
+        continue;
+      }
+
+      if (startLng < -180 || startLng > 180 || endLng < -180 || endLng > 180) {
+        console.warn(`Skipping line ${i + 1}: longitude out of range`);
+        continue;
+      }
+
+      routes.push({
+        name: name || `Route ${routes.length + 1}`,
+        startLat,
+        startLng,
+        endLat,
+        endLng
+      });
+    }
+
+    return routes;
   };
 
   return (
-    <div className="bg-white rounded-lg p-6 shadow-md">
-      <h2 className="text-xl font-semibold mb-4">Enter Coordinates</h2>
+    <div className="bg-white rounded-lg p-4">
+      <h2 className="text-xl font-bold mb-4">Add New Route</h2>
       
       <form onSubmit={handleSubmit}>
         <div className="mb-4">
-          <label htmlFor="latitude" className="block text-sm font-medium text-gray-700 mb-1">
-            Latitude
+          <label htmlFor="routeName" className="block text-sm font-medium text-gray-700 mb-1">
+            Route Name
           </label>
           <input
-            id="latitude"
+            id="routeName"
             type="text"
-            value={latitude}
-            onChange={(e) => setLatitude(e.target.value)}
+            value={routeName}
+            onChange={(e) => setRouteName(e.target.value)}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-            placeholder="e.g., 52.52"
-            required
+            placeholder="e.g., Berlin Route"
           />
+        </div>
+
+        <div className="mb-4">
+          <h3 className="font-medium text-gray-700 mb-2">Starting Point</h3>
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div>
+              <label htmlFor="startLatitude" className="block text-sm font-medium text-gray-700 mb-1">
+                Latitude
+              </label>
+              <input
+                id="startLatitude"
+                type="text"
+                value={startLatitude}
+                onChange={(e) => setStartLatitude(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                placeholder="e.g., 52.52"
+                required
+              />
+            </div>
+            <div>
+              <label htmlFor="startLongitude" className="block text-sm font-medium text-gray-700 mb-1">
+                Longitude
+              </label>
+              <input
+                id="startLongitude"
+                type="text"
+                value={startLongitude}
+                onChange={(e) => setStartLongitude(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                placeholder="e.g., 13.405"
+                required
+              />
+            </div>
+          </div>
         </div>
         
         <div className="mb-6">
-          <label htmlFor="longitude" className="block text-sm font-medium text-gray-700 mb-1">
-            Longitude
-          </label>
-          <input
-            id="longitude"
-            type="text"
-            value={longitude}
-            onChange={(e) => setLongitude(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-            placeholder="e.g., 13.405"
-            required
-          />
+          <h3 className="font-medium text-gray-700 mb-2">Destination</h3>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="endLatitude" className="block text-sm font-medium text-gray-700 mb-1">
+                Latitude
+              </label>
+              <input
+                id="endLatitude"
+                type="text"
+                value={endLatitude}
+                onChange={(e) => setEndLatitude(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                placeholder="e.g., 52.52"
+                required
+              />
+            </div>
+            <div>
+              <label htmlFor="endLongitude" className="block text-sm font-medium text-gray-700 mb-1">
+                Longitude
+              </label>
+              <input
+                id="endLongitude"
+                type="text"
+                value={endLongitude}
+                onChange={(e) => setEndLongitude(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                placeholder="e.g., 13.405"
+                required
+              />
+            </div>
+          </div>
         </div>
 
         {error && (
@@ -77,12 +238,30 @@ export default function CoordinateForm({ onSubmit }: CoordinateFormProps) {
           </div>
         )}
         
-        <button
-          type="submit"
-          className="w-full inline-flex justify-center items-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2 text-sm font-medium transition-colors"
-        >
-          Update Map
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="submit"
+            className="flex-1 inline-flex justify-center items-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2 text-sm font-medium transition-colors"
+          >
+            Add Route
+          </button>
+          
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="flex-1 inline-flex justify-center items-center rounded-md bg-black text-white hover:bg-primary/90 h-10 px-4 py-2 text-sm font-medium transition-colors"
+          >
+            Import CSV
+          </button>
+        </div>
+        
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".csv"
+          onChange={handleFileUpload}
+          className="hidden"
+        />
       </form>
     </div>
   );
