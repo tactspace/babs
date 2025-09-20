@@ -17,7 +17,7 @@ export default function HowItWorksSection() {
   }, []);
 
   return (
-    <section id="how-it-works" className="py-32 bg-muted/50">
+    <section id="how-it-works" className="py-32">
       <div className="container mx-auto max-w-5xl px-4">
         <h2 
           className="text-3xl font-bold mb-12 text-center opacity-0 animate-fade-in"
