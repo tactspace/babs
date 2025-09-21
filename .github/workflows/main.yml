@@ -28,7 +28,7 @@ jobs:
             --exclude=".git" \
             ./ githubcicd@${{ secrets.VM_IP }}:/home/githubcicd/optily/
 
-      - name: Build and run new Docker container
+      - name: Build and run new frontend container
         run: |
           ssh githubcicd@${{ secrets.VM_IP }} << 'EOF'
             cd /home/githubcicd/optily/frontend
@@ -36,4 +36,13 @@ jobs:
             sudo docker stop optily-fe || true
             sudo docker rm optily-fe || true
             sudo docker run -d --name optily-fe --env-file .env.production -p 3005:3000 optily-fe
+
+      - name: Build and run new backend container
+        run: |
+          ssh githubcicd@${{ secrets.VM_IP }} << 'EOF'
+            cd /home/githubcicd/optily/backend
+            sudo docker build --no-cache -t optily-be .
+            sudo docker stop optily-be || true
+            sudo docker rm optily-be || true
+            sudo docker run -d --name optily-be --env-file .env -p 8000:8000 optily-be
           EOF

@@ -6,20 +6,41 @@ import "leaflet/dist/leaflet.css";
 import { createCustomMarker, COLORS, activeHighlightMarker } from "./LocationMarkerIcon";
 import L from "leaflet";
 import { Route } from "./DemoPage";
+import { ChargingStation } from "../../types/chargingStation";
+import { Zap } from "lucide-react";
 
 interface MapViewProps {
   routes: Route[];
   activeRouteId: string;
+  showChargingStations: boolean;
+  chargingStations: ChargingStation[];
 }
 
+// Create charging station icon
+const createChargingStationIcon = (isTruckSuitable: boolean) => {
+  return L.divIcon({
+    html: `
+      <div class="charging-station-marker ${isTruckSuitable ? 'truck-suitable' : 'limited'}">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+        </svg>
+      </div>
+    `,
+    className: 'custom-charging-station-icon',
+    iconSize: [20, 20],
+    iconAnchor: [10, 10],
+  });
+};
+
 // Component to fit bounds when route points change
-function BoundsAdjuster({ routes }: { routes: Route[] }) {
+function BoundsAdjuster({ routes, chargingStations, showChargingStations }: { 
+  routes: Route[]; 
+  chargingStations: ChargingStation[];
+  showChargingStations: boolean;
+}) {
   const map = useMap();
   
   useEffect(() => {
-    if (routes.length === 0) return;
-    
-    // Create a bounds object
     const bounds = L.latLngBounds([]);
     
     // Add all route points to the bounds
@@ -28,12 +49,21 @@ function BoundsAdjuster({ routes }: { routes: Route[] }) {
       bounds.extend([route.end.lat, route.end.lng]);
     });
     
-    // Apply padding to ensure all points are visible with some margin
-    map.fitBounds(bounds, {
-      padding: [50, 50], // Padding in pixels [top/bottom, left/right]
-      maxZoom: 13        // Limit zoom level to avoid excessive zoom on close points
-    });
-  }, [map, routes]);
+    // Add charging stations to bounds if they're visible
+    if (showChargingStations && chargingStations.length > 0) {
+      chargingStations.forEach(station => {
+        bounds.extend([station.latitude, station.longitude]);
+      });
+    }
+    
+    if (bounds.isValid()) {
+      // Apply padding to ensure all points are visible with some margin
+      map.fitBounds(bounds, {
+        padding: [50, 50], // Padding in pixels [top/bottom, left/right]
+        maxZoom: 13        // Limit zoom level to avoid excessive zoom on close points
+      });
+    }
+  }, [map, routes, chargingStations, showChargingStations]);
   
   return null;
 }
@@ -44,7 +74,7 @@ function getRouteColor(index: number): string {
   return COLORS[colorKeys[index % colorKeys.length]];
 }
 
-export default function MapView({ routes, activeRouteId }: MapViewProps) {
+export default function MapView({ routes, activeRouteId, showChargingStations, chargingStations }: MapViewProps) {
   const [isMounted, setIsMounted] = useState(false);
   
   useEffect(() => {
@@ -82,13 +112,14 @@ export default function MapView({ routes, activeRouteId }: MapViewProps) {
       center={[centerLat, centerLng]} 
       zoom={zoom} 
       style={{ height: "100%", width: "100%" }}
-      key={`map-${routes.map(r => r.id).join('-')}-${activeRouteId}`}
+      key={`map-${routes.map(r => r.id).join('-')}-${activeRouteId}-${showChargingStations}`}
     >
       <TileLayer
         attribution='&copy; <a href="https://www.optily.eu">optily.eu</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       
+      {/* Render Routes */}
       {routes.map((route, index) => {
         const isActive = route.id === activeRouteId;
         const routeColor = getRouteColor(index);
@@ -127,7 +158,47 @@ export default function MapView({ routes, activeRouteId }: MapViewProps) {
         );
       })}
       
-      <BoundsAdjuster routes={routes} />
+      {/* Render Charging Stations */}
+      {showChargingStations && chargingStations.map((station) => (
+        <Marker
+          key={station.id}
+          position={[station.latitude, station.longitude]}
+          icon={createChargingStationIcon(station.truck_suitability === "yes")}
+          zIndexOffset={500}
+        >
+          <Popup>
+            <div className="font-medium p-2 min-w-[200px]">
+              <div className="font-bold mb-2 text-lg">{station.operator_name}</div>
+              <div className="space-y-1 text-sm">
+                <div><strong>ID:</strong> {station.id}</div>
+                <div><strong>Country:</strong> {station.country}</div>
+                <div><strong>Truck Suitable:</strong> 
+                  <span className={`ml-1 px-2 py-1 rounded text-xs ${
+                    station.truck_suitability === "yes" 
+                      ? "bg-green-100 text-green-800" 
+                      : "bg-yellow-100 text-yellow-800"
+                  }`}>
+                    {station.truck_suitability === "yes" ? "Yes" : "Limited"}
+                  </span>
+                </div>
+                <div><strong>Max Power:</strong> {station.max_power_kW} kW</div>
+                <div><strong>Price:</strong> €{station.price_per_kWh}/kWh</div>
+                <div><strong>Coordinates:</strong></div>
+                <div className="text-xs text-gray-600">
+                  Lat: {station.latitude.toFixed(5)}<br/>
+                  Lng: {station.longitude.toFixed(5)}
+                </div>
+              </div>
+            </div>
+          </Popup>
+        </Marker>
+      ))}
+      
+      <BoundsAdjuster 
+        routes={routes} 
+        chargingStations={chargingStations}
+        showChargingStations={showChargingStations}
+      />
     </MapContainer>
   );
 }
