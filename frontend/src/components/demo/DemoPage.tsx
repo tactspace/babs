@@ -15,6 +15,9 @@ export interface Route {
   start: { lat: number; lng: number };
   end: { lat: number; lng: number };
   name?: string;
+  path?: Array<{lat: number, lng: number}>; // Add path coordinates
+  distance_km?: number; // Add distance
+  duration_minutes?: number; // Add duration
 }
 
 export default function DemoPage() {
@@ -23,6 +26,7 @@ export default function DemoPage() {
   const [showChargingStations, setShowChargingStations] = useState<boolean>(false);
   const [chargingStations, setChargingStations] = useState<ChargingStation[]>([]);
   const [loadingChargingStations, setLoadingChargingStations] = useState<boolean>(false);
+  const [isFindingRoutes, setIsFindingRoutes] = useState<boolean>(false); // Add loading state
 
   // Fetch charging stations when showChargingStations becomes true
   useEffect(() => {
@@ -106,6 +110,65 @@ export default function DemoPage() {
     setShowChargingStations(!showChargingStations);
   };
 
+  const handleFindRoute = async () => {
+    if (routes.length === 0) {
+      console.log('No routes to find paths for');
+      return;
+    }
+
+    setIsFindingRoutes(true); // Start loading
+    console.log(`Finding routes for ${routes.length} existing routes...`);
+    
+    try {
+      // Process each route
+      for (const route of routes) {
+        try {
+          const response = await fetch(`${BASE_URL}/get-optimal-route`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              start_lat: route.start.lat,
+              start_lng: route.start.lng,
+              end_lat: route.end.lat,
+              end_lng: route.end.lng,
+              route_name: route.name || `Route ${route.id}`
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+
+          const routeData = await response.json();
+          
+          if (routeData.success) {
+            console.log(`Route found for ${route.name}:`, routeData);
+            
+            // Update the existing route with path data
+            setRoutes(prev => prev.map(r => 
+              r.id === route.id 
+                ? {
+                    ...r,
+                    path: routeData.coordinates,
+                    distance_km: routeData.distance_km,
+                    duration_minutes: routeData.duration_minutes
+                  }
+                : r
+            ));
+          } else {
+            console.error(`Route calculation failed for ${route.name}:`, routeData.message);
+          }
+        } catch (error) {
+          console.error(`Error fetching route for ${route.name}:`, error);
+        }
+      }
+    } finally {
+      setIsFindingRoutes(false); // End loading
+    }
+  };
+
   return (
     <div className="h-screen bg-background flex flex-col md:flex-row overflow-hidden">
       
@@ -120,6 +183,9 @@ export default function DemoPage() {
           <CoordinateForm 
             onSubmit={handleCoordinateSubmit}
             onImportCSV={handleImportCSV}
+            onFindRoute={handleFindRoute}
+            isFindRouteEnabled={routes.length > 0 && !isFindingRoutes}
+            isFindingRoutes={isFindingRoutes}
           />
         </div>
         
