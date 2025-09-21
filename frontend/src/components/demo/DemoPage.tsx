@@ -6,7 +6,7 @@ import RoutesList from "./RoutesList";
 import "./MapStyles.css";
 import dynamic from "next/dynamic";
 import { ChargingStation } from "../../types/chargingStation";
-
+import { BASE_URL } from "../../lib/utils";
 const MapView = dynamic(() => import("./MapView"), { ssr: false });
 
 // Define the route type
@@ -23,7 +23,6 @@ export default function DemoPage() {
   const [showChargingStations, setShowChargingStations] = useState<boolean>(false);
   const [chargingStations, setChargingStations] = useState<ChargingStation[]>([]);
   const [loadingChargingStations, setLoadingChargingStations] = useState<boolean>(false);
-  const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
   // Fetch charging stations when showChargingStations becomes true
   useEffect(() => {
