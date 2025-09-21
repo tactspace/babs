@@ -23,6 +23,7 @@ export default function DemoPage() {
   const [showChargingStations, setShowChargingStations] = useState<boolean>(false);
   const [chargingStations, setChargingStations] = useState<ChargingStation[]>([]);
   const [loadingChargingStations, setLoadingChargingStations] = useState<boolean>(false);
+  const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
   // Fetch charging stations when showChargingStations becomes true
   useEffect(() => {
@@ -31,7 +32,7 @@ export default function DemoPage() {
       
       setLoadingChargingStations(true);
       try {
-        const response = await fetch('http://localhost:8000/charging-stations?limit=-1');
+        const response = await fetch(`${BASE_URL}/charging-stations?limit=-1`);
         if (!response.ok) {
           throw new Error('Failed to fetch charging stations');
         }
