@@ -7,3 +7,4 @@ networkx
 matplotlib
 python-dotenv
 openpyxl
+uvicorn

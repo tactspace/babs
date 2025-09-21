@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import CoordinateForm from "./CoordinateForm";
 import RoutesList from "./RoutesList";
 import "./MapStyles.css";
 import dynamic from "next/dynamic";
+import { ChargingStation } from "../../types/chargingStation";
 
 const MapView = dynamic(() => import("./MapView"), { ssr: false });
 
@@ -19,6 +20,32 @@ export interface Route {
 export default function DemoPage() {
   const [routes, setRoutes] = useState<Route[]>([]);
   const [activeRouteId, setActiveRouteId] = useState<string>("");
+  const [showChargingStations, setShowChargingStations] = useState<boolean>(false);
+  const [chargingStations, setChargingStations] = useState<ChargingStation[]>([]);
+  const [loadingChargingStations, setLoadingChargingStations] = useState<boolean>(false);
+
+  // Fetch charging stations when showChargingStations becomes true
+  useEffect(() => {
+    const fetchChargingStations = async () => {
+      if (!showChargingStations) return;
+      
+      setLoadingChargingStations(true);
+      try {
+        const response = await fetch('http://localhost:8000/charging-stations?limit=-1');
+        if (!response.ok) {
+          throw new Error('Failed to fetch charging stations');
+        }
+        const data: ChargingStation[] = await response.json();
+        setChargingStations(data);
+      } catch (error) {
+        console.error('Error fetching charging stations:', error);
+      } finally {
+        setLoadingChargingStations(false);
+      }
+    };
+
+    fetchChargingStations();
+  }, [showChargingStations]);
 
   const handleCoordinateSubmit = (startLat: number, startLng: number, endLat: number, endLng: number, name?: string) => {
     // Always add a new route - no editing allowed
@@ -75,6 +102,10 @@ export default function DemoPage() {
     setActiveRouteId(routeId);
   };
 
+  const handleChargingStationsToggle = () => {
+    setShowChargingStations(!showChargingStations);
+  };
+
   return (
     <div className="h-screen bg-background flex flex-col md:flex-row overflow-hidden">
       
@@ -99,11 +130,19 @@ export default function DemoPage() {
           onRouteSelect={handleRouteSelect}
           onRouteDelete={handleDeleteRoute}
           onClearAll={handleClearAll}
+          showChargingStations={showChargingStations}
+          onChargingStationsToggle={handleChargingStationsToggle}
+          loadingChargingStations={loadingChargingStations}
         />
       </div>
       
       <div className="w-full md:w-3/5 h-full">
-        <MapView routes={routes} activeRouteId={activeRouteId} />
+        <MapView 
+          routes={routes} 
+          activeRouteId={activeRouteId} 
+          showChargingStations={showChargingStations}
+          chargingStations={chargingStations}
+        />
       </div>
     </div>
   );

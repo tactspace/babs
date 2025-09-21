@@ -1,6 +1,7 @@
 "use client";
 
 import { Route } from "./DemoPage";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 
 interface RoutesListProps {
   routes: Route[];
@@ -8,22 +9,56 @@ interface RoutesListProps {
   onRouteSelect: (routeId: string) => void;
   onRouteDelete: (routeId: string) => void;
   onClearAll?: () => void;
+  showChargingStations: boolean;
+  onChargingStationsToggle: () => void;
+  loadingChargingStations: boolean;
 }
 
-export default function RoutesList({ routes, activeRouteId, onRouteSelect, onRouteDelete, onClearAll }: RoutesListProps) {
+export default function RoutesList({ 
+  routes, 
+  activeRouteId, 
+  onRouteSelect, 
+  onRouteDelete, 
+  onClearAll,
+  showChargingStations,
+  onChargingStationsToggle,
+  loadingChargingStations
+}: RoutesListProps) {
   return (
     <div className="flex-1 px-10 pb-12 overflow-hidden">
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-lg font-bold">Routes</h2>
-        {routes.length > 0 && (
-          <button
-            onClick={onClearAll}
-            className="px-3 py-1 text-sm bg-red-100 text-red-700 hover:bg-red-200 hover:text-red-800 rounded-md transition-colors border border-red-200"
-            title="Clear all routes"
-          >
-            Clear All
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {/* Charging Stations Toggle */}
+          <div className="flex items-center space-x-2">
+            <span className="text-sm font-medium text-gray-700">Charging Stations</span>
+            <button
+              onClick={onChargingStationsToggle}
+              className="p-1 text-gray-500 hover:text-primary transition-colors"
+              title={showChargingStations ? "Hide charging stations" : "Show charging stations"}
+              disabled={loadingChargingStations}
+            >
+              {loadingChargingStations ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : showChargingStations ? (
+                <Eye className="w-5 h-5" />
+              ) : (
+                <EyeOff className="w-5 h-5" />
+              )}
+            </button>
+          </div>
+          
+          {/* Clear All Button */}
+          {routes.length > 0 && (
+            <button
+              onClick={onClearAll}
+              className="px-3 py-1 text-sm bg-red-100 text-red-700 hover:bg-red-200 hover:text-red-800 rounded-md transition-colors border border-red-200"
+              title="Clear all routes"
+            >
+              Clear All
+            </button>
+          )}
+        </div>
       </div>
       
       <div className="space-y-3 overflow-y-auto h-full pb-4">
