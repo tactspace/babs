@@ -109,3 +109,18 @@ class Driver(BaseModel):
     home_location: Tuple[float, float]  # (latitude, longitude)
     current_truck_id: Optional[int] = None
     current_location: Optional[Tuple[float, float]] = None
+
+class SingleRouteRequest(BaseModel):
+    start_lat: float
+    start_lng: float
+    end_lat: float
+    end_lng: float
+    route_name: Optional[str] = None
+
+class SingleRouteResponse(BaseModel):
+    distance_km: float
+    route_name: str
+    duration_minutes: float
+    coordinates: List[Dict[str, float]]
+    success: bool
+    message: Optional[str] = None

@@ -2,8 +2,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, List, Tuple, Any
 import os
-
-from models import RouteRequest, RouteResult, Driver
+import json
+from models import RouteRequest, RouteResult, Driver, SingleRouteRequest, SingleRouteResponse
 from trucks import load_truck_specs
 from charging_stations import load_charging_stations
 from route_calculator import calculate_detailed_route, calculate_multi_route
@@ -65,16 +65,6 @@ async def root():
     return {"message": "E-Truck Routing Optimizer API"}
 
 
-@app.get("/trucks")
-async def get_trucks() -> Dict:
-    """Get available truck models"""
-    return {model: truck.dict() for model, truck in truck_specs.items()}
-@app.get("/drivers")
-async def get_drivers() -> Dict:
-    return {k: v.dict() for k, v in drivers.items()}
-
-
-
 @app.get("/charging-stations")
 async def get_charging_stations(
     country: str = None,
@@ -92,6 +82,68 @@ async def get_charging_stations(
     
     # Return limited number of stations
     return [station.dict() for station in filtered[:limit]]
+
+@app.post("/get-optimal-route", response_model=SingleRouteResponse)
+async def get_optimal_route(request: SingleRouteRequest):
+    """Get a simple route between two points using TomTom API"""
+    try:
+        start_point = (request.start_lat, request.start_lng)
+        end_point = (request.end_lat, request.end_lng)
+        route_name = request.route_name
+        
+        # Call TomTom API
+        from tomtom import get_route
+        route_data = get_route(start_point, end_point)
+
+        # export to json
+        with open(f"{route_name}.json", "w") as f:
+            json.dump(route_data, f)
+        
+        if not route_data:
+            return SingleRouteResponse(
+                distance_km=0,
+                route_name=route_name,
+                duration_minutes=0,
+                coordinates=[],
+                success=False,
+                message="Something went wrong. Could not calculate route"
+            )
+        
+        # Convert coordinates to the format expected by frontend
+        coordinates = []
+        for point in route_data["coordinates"]:
+            coordinates.append({
+                "lat": point["latitude"],
+                "lng": point["longitude"]
+            })
+        
+        return SingleRouteResponse(
+            distance_km=route_data["distance"] / 1000,  # Convert meters to km
+            duration_minutes=route_data["duration"] / 60,  # Convert seconds to minutes
+            coordinates=coordinates,
+            success=True,
+            message="Route calculated successfully",
+            route_name=route_name
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+
+
+
+
+
+# Refactoring needed below
+@app.get("/trucks")
+async def get_trucks() -> Dict:
+    """Get available truck models"""
+    return {model: truck.dict() for model, truck in truck_specs.items()}
+@app.get("/drivers")
+async def get_drivers() -> Dict:
+    return {k: v.dict() for k, v in drivers.items()}
 
 
 @app.get("/charging-stations/{station_id}")

@@ -1,13 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import { createCustomMarker, COLORS, activeHighlightMarker } from "./LocationMarkerIcon";
 import L from "leaflet";
 import { Route } from "./DemoPage";
 import { ChargingStation } from "../../types/chargingStation";
-import { Zap } from "lucide-react";
 
 interface MapViewProps {
   routes: Route[];
@@ -128,6 +127,26 @@ export default function MapView({ routes, activeRouteId, showChargingStations, c
         
         return (
           <div key={route.id}>
+            {/* Render route path if available */}
+            {route.path && route.path.length > 0 && (
+              <>
+                {/* Black border - rendered first (underneath) */}
+                <Polyline
+                  positions={route.path.map(coord => [coord.lat, coord.lng])}
+                  color="#000000"
+                  weight={isActive ? 6 : 5}
+                  opacity={0.8}
+                />
+                {/* Main colored path - rendered on top */}
+                <Polyline
+                  positions={route.path.map(coord => [coord.lat, coord.lng])}
+                  color={routeColor}
+                  weight={isActive ? 4 : 3}
+                  opacity={isActive ? 0.9 : 0.7}
+                />
+              </>
+            )}
+            
             <Marker 
               position={[route.start.lat, route.start.lng]} 
               icon={customStartMarker}
@@ -138,6 +157,8 @@ export default function MapView({ routes, activeRouteId, showChargingStations, c
                   <div className="font-bold mb-1">{route.name || 'Route'} - Starting Point</div>
                   <div>Latitude: {route.start.lat.toFixed(5)}</div>
                   <div>Longitude: {route.start.lng.toFixed(5)}</div>
+                  {route.distance_km && <div>Distance: {route.distance_km.toFixed(1)} km</div>}
+                  {route.duration_minutes && <div>Duration: {route.duration_minutes.toFixed(0)} min</div>}
                 </div>
               </Popup>
             </Marker>
@@ -151,6 +172,8 @@ export default function MapView({ routes, activeRouteId, showChargingStations, c
                   <div className="font-bold mb-1">{route.name || 'Route'} - Destination</div>
                   <div>Latitude: {route.end.lat.toFixed(5)}</div>
                   <div>Longitude: {route.end.lng.toFixed(5)}</div>
+                  {route.distance_km && <div>Distance: {route.distance_km.toFixed(1)} km</div>}
+                  {route.duration_minutes && <div>Duration: {route.duration_minutes.toFixed(0)} min</div>}
                 </div>
               </Popup>
             </Marker>
