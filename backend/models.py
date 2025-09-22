@@ -117,6 +117,37 @@ class SingleRouteRequest(BaseModel):
     end_lng: float
     route_name: Optional[str] = None
 
+# NEW: Enhanced models for detailed route information
+class DetailedRouteSegment(BaseModel):
+    """Model representing a detailed route segment with costs"""
+    segment_number: int
+    start_point: Tuple[float, float]  # (latitude, longitude)
+    end_point: Tuple[float, float]  # (latitude, longitude)
+    distance_km: float
+    duration_minutes: float
+    energy_consumption_kwh: float
+    coordinates: List[Dict[str, float]]  # Route coordinates for this segment
+    costs: Dict[str, float]  # Cost breakdown for this segment
+
+class DetailedChargingStop(BaseModel):
+    """Model representing a detailed charging stop"""
+    stop_number: int
+    charging_station: ChargingStation
+    arrival_battery_kwh: float
+    energy_to_charge_kwh: float
+    charging_time_hours: float
+    charging_cost_eur: float
+    departure_battery_kwh: float
+
+class RouteCosts(BaseModel):
+    """Model representing total route costs"""
+    driver_cost_eur: float
+    energy_cost_eur: float
+    depreciation_cost_eur: float
+    tolls_cost_eur: float
+    charging_cost_eur: float
+    total_cost_eur: float
+
 class SingleRouteResponse(BaseModel):
     distance_km: float
     route_name: str
@@ -124,3 +155,18 @@ class SingleRouteResponse(BaseModel):
     coordinates: List[Dict[str, float]]
     success: bool
     message: Optional[str] = None
+    
+    
+class SingleRouteWithSegments(BaseModel):
+    distance_km: float
+    route_name: str
+    duration_minutes: float
+    success: bool
+    message: Optional[str] = None
+    # NEW: Enhanced fields
+    route_segments: List[DetailedRouteSegment] = []
+    charging_stops: List[DetailedChargingStop] = []
+    total_costs: Optional[RouteCosts] = None
+    truck_model: Optional[str] = None
+    starting_battery_kwh: Optional[float] = None
+    final_battery_kwh: Optional[float] = None

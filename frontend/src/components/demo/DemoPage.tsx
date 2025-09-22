@@ -6,6 +6,7 @@ import RoutesList from "./RoutesList";
 import "./MapStyles.css";
 import dynamic from "next/dynamic";
 import { ChargingStation } from "../../types/chargingStation";
+import { SingleRouteWithSegments } from "../../types/route";
 import { BASE_URL } from "../../lib/utils";
 const MapView = dynamic(() => import("./MapView"), { ssr: false });
 
@@ -18,6 +19,10 @@ export interface Route {
   path?: Array<{lat: number, lng: number}>; // Add path coordinates
   distance_km?: number; // Add distance
   duration_minutes?: number; // Add duration
+  // NEW: Enhanced route information
+  routeData?: SingleRouteWithSegments;
+  segments?: Array<{lat: number, lng: number}>[];
+  chargingStops?: Array<{lat: number, lng: number}>;
 }
 
 export default function DemoPage() {
@@ -123,7 +128,8 @@ export default function DemoPage() {
       // Process each route
       for (const route of routes) {
         try {
-          const response = await fetch(`${BASE_URL}/get-optimal-route`, {
+          // UPDATED: Use the new /calculate-costs endpoint
+          const response = await fetch(`${BASE_URL}/calculate-costs`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -141,19 +147,56 @@ export default function DemoPage() {
             throw new Error(`HTTP error! status: ${response.status}`);
           }
 
-          const routeData = await response.json();
+          const routeData: SingleRouteWithSegments = await response.json();
           
           if (routeData.success) {
             console.log(`Route found for ${route.name}:`, routeData);
             
-            // Update the existing route with path data
+            // Convert coordinates to the format expected by frontend
+            // Handle both cases: coordinates might be undefined or in different format
+            let coordinates: Array<{lat: number, lng: number}> = [];
+            
+            if (routeData.coordinates && Array.isArray(routeData.coordinates)) {
+              coordinates = routeData.coordinates.map(point => ({
+                lat: point.latitude || point.lat,
+                lng: point.longitude || point.lng
+              }));
+            }
+
+            // Extract segment paths
+            let segmentPaths: Array<{lat: number, lng: number}>[] = [];
+            if (routeData.route_segments && Array.isArray(routeData.route_segments)) {
+              segmentPaths = routeData.route_segments.map(segment => {
+                if (segment.coordinates && Array.isArray(segment.coordinates)) {
+                  return segment.coordinates.map(point => ({
+                    lat: point.latitude || point.lat,
+                    lng: point.longitude || point.lng
+                  }));
+                }
+                return [];
+              });
+            }
+
+            // Extract charging stop locations
+            let chargingStopLocations: Array<{lat: number, lng: number}> = [];
+            if (routeData.charging_stops && Array.isArray(routeData.charging_stops)) {
+              chargingStopLocations = routeData.charging_stops.map(stop => ({
+                lat: stop.charging_station.latitude,
+                lng: stop.charging_station.longitude
+              }));
+            }
+            
+            // Update the existing route with enhanced data
             setRoutes(prev => prev.map(r => 
               r.id === route.id 
                 ? {
                     ...r,
-                    path: routeData.coordinates,
+                    path: coordinates,
                     distance_km: routeData.distance_km,
-                    duration_minutes: routeData.duration_minutes
+                    duration_minutes: routeData.duration_minutes,
+                    routeData: routeData,
+                    segments: segmentPaths,
+                    chargingStops: chargingStopLocations
                   }
                 : r
             ));

@@ -31,6 +31,23 @@ const createChargingStationIcon = (isTruckSuitable: boolean) => {
   });
 };
 
+// Create charging stop icon (different from general charging stations)
+const createChargingStopIcon = () => {
+  return L.divIcon({
+    html: `
+      <div class="charging-stop-marker">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+        </svg>
+      </div>
+    `,
+    className: 'custom-charging-stop-icon',
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+  });
+};
+
 // Component to fit bounds when route points change
 function BoundsAdjuster({ routes, chargingStations, showChargingStations }: { 
   routes: Route[]; 
@@ -46,6 +63,13 @@ function BoundsAdjuster({ routes, chargingStations, showChargingStations }: {
     routes.forEach(route => {
       bounds.extend([route.start.lat, route.start.lng]);
       bounds.extend([route.end.lat, route.end.lng]);
+      
+      // Add charging stops to bounds
+      if (route.chargingStops) {
+        route.chargingStops.forEach(stop => {
+          bounds.extend([stop.lat, stop.lng]);
+        });
+      }
     });
     
     // Add charging stations to bounds if they're visible
@@ -71,6 +95,18 @@ function BoundsAdjuster({ routes, chargingStations, showChargingStations }: {
 function getRouteColor(index: number): string {
   const colorKeys = Object.keys(COLORS) as Array<keyof typeof COLORS>;
   return COLORS[colorKeys[index % colorKeys.length]];
+}
+
+// Generate segment colors (variations of the main route color)
+function getSegmentColor(baseColor: string, segmentIndex: number): string {
+  // Create slight variations of the base color for segments
+  const colors = [
+    baseColor,
+    `${baseColor}CC`, // 80% opacity
+    `${baseColor}99`, // 60% opacity
+    `${baseColor}66`, // 40% opacity
+  ];
+  return colors[segmentIndex % colors.length];
 }
 
 export default function MapView({ routes, activeRouteId, showChargingStations, chargingStations }: MapViewProps) {
@@ -106,6 +142,14 @@ export default function MapView({ routes, activeRouteId, showChargingStations, c
     zoom = 10;
   }
 
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('de-DE', {
+      style: 'currency',
+      currency: 'EUR',
+      minimumFractionDigits: 2
+    }).format(amount);
+  };
+
   return (
     <MapContainer 
       center={[centerLat, centerLng]} 
@@ -127,26 +171,55 @@ export default function MapView({ routes, activeRouteId, showChargingStations, c
         
         return (
           <div key={route.id}>
-            {/* Render route path if available */}
-            {route.path && route.path.length > 0 && (
+            {/* Render segmented route if available */}
+            {route.segments && route.segments.length > 0 ? (
               <>
-                {/* Black border - rendered first (underneath) */}
-                <Polyline
-                  positions={route.path.map(coord => [coord.lat, coord.lng])}
-                  color="#000000"
-                  weight={isActive ? 6 : 5}
-                  opacity={0.8}
-                />
-                {/* Main colored path - rendered on top */}
-                <Polyline
-                  positions={route.path.map(coord => [coord.lat, coord.lng])}
-                  color={routeColor}
-                  weight={isActive ? 4 : 3}
-                  opacity={isActive ? 0.9 : 0.7}
-                />
+                {/* Render each segment */}
+                {route.segments.map((segment, segmentIndex) => {
+                  const segmentColor = getSegmentColor(routeColor, segmentIndex);
+                  return (
+                    <div key={`segment-${segmentIndex}`}>
+                      {/* Black border for segment */}
+                      <Polyline
+                        positions={segment.map(coord => [coord.lat, coord.lng])}
+                        color="#000000"
+                        weight={isActive ? 6 : 5}
+                        opacity={0.8}
+                      />
+                      {/* Main colored segment */}
+                      <Polyline
+                        positions={segment.map(coord => [coord.lat, coord.lng])}
+                        color={segmentColor}
+                        weight={isActive ? 4 : 3}
+                        opacity={isActive ? 0.9 : 0.7}
+                      />
+                    </div>
+                  );
+                })}
               </>
+            ) : (
+              /* Fallback to single route path if segments not available */
+              route.path && route.path.length > 0 && (
+                <>
+                  {/* Black border - rendered first (underneath) */}
+                  <Polyline
+                    positions={route.path.map(coord => [coord.lat, coord.lng])}
+                    color="#000000"
+                    weight={isActive ? 6 : 5}
+                    opacity={0.8}
+                  />
+                  {/* Main colored path - rendered on top */}
+                  <Polyline
+                    positions={route.path.map(coord => [coord.lat, coord.lng])}
+                    color={routeColor}
+                    weight={isActive ? 4 : 3}
+                    opacity={isActive ? 0.9 : 0.7}
+                  />
+                </>
+              )
             )}
             
+            {/* Start Marker */}
             <Marker 
               position={[route.start.lat, route.start.lng]} 
               icon={customStartMarker}
@@ -159,9 +232,16 @@ export default function MapView({ routes, activeRouteId, showChargingStations, c
                   <div>Longitude: {route.start.lng.toFixed(5)}</div>
                   {route.distance_km && <div>Distance: {route.distance_km.toFixed(1)} km</div>}
                   {route.duration_minutes && <div>Duration: {route.duration_minutes.toFixed(0)} min</div>}
+                  {route.routeData?.total_costs && (
+                    <div className="mt-2 pt-2 border-t">
+                      <div className="font-bold text-green-600">Total Cost: {formatCurrency(route.routeData.total_costs.total_cost_eur)}</div>
+                    </div>
+                  )}
                 </div>
               </Popup>
             </Marker>
+
+            {/* End Marker */}
             <Marker 
               position={[route.end.lat, route.end.lng]} 
               icon={customEndMarker}
@@ -174,14 +254,47 @@ export default function MapView({ routes, activeRouteId, showChargingStations, c
                   <div>Longitude: {route.end.lng.toFixed(5)}</div>
                   {route.distance_km && <div>Distance: {route.distance_km.toFixed(1)} km</div>}
                   {route.duration_minutes && <div>Duration: {route.duration_minutes.toFixed(0)} min</div>}
+                  {route.routeData?.total_costs && (
+                    <div className="mt-2 pt-2 border-t">
+                      <div className="font-bold text-green-600">Total Cost: {formatCurrency(route.routeData.total_costs.total_cost_eur)}</div>
+                    </div>
+                  )}
                 </div>
               </Popup>
             </Marker>
+
+            {/* Charging Stop Markers */}
+            {route.chargingStops && route.chargingStops.map((stop, stopIndex) => (
+              <Marker
+                key={`charging-stop-${stopIndex}`}
+                position={[stop.lat, stop.lng]}
+                icon={createChargingStopIcon()}
+                zIndexOffset={isActive ? 900 : 400}
+              >
+                <Popup>
+                  <div className="font-medium p-2 min-w-[200px]">
+                    <div className="font-bold mb-2 text-lg">⚡ Charging Stop {stopIndex + 1}</div>
+                    {route.routeData?.charging_stops && route.routeData.charging_stops[stopIndex] && (
+                      <>
+                        <div className="space-y-1 text-sm">
+                          <div><strong>Station:</strong> {route.routeData.charging_stops[stopIndex].charging_station.operator_name}</div>
+                          <div><strong>Power:</strong> {route.routeData.charging_stops[stopIndex].charging_station.max_power_kW} kW</div>
+                          <div><strong>Price:</strong> €{route.routeData.charging_stops[stopIndex].charging_station.price_per_kWh}/kWh</div>
+                          <div><strong>Charging Time:</strong> {route.routeData.charging_stops[stopIndex].charging_time_hours.toFixed(1)}h</div>
+                          <div><strong>Cost:</strong> {formatCurrency(route.routeData.charging_stops[stopIndex].charging_cost_eur)}</div>
+                          <div><strong>Energy:</strong> {route.routeData.charging_stops[stopIndex].energy_to_charge_kwh.toFixed(1)} kWh</div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </Popup>
+              </Marker>
+            ))}
           </div>
         );
       })}
       
-      {/* Render Charging Stations */}
+      {/* Render General Charging Stations */}
       {showChargingStations && chargingStations.map((station) => (
         <Marker
           key={station.id}

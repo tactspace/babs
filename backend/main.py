@@ -3,11 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, List, Tuple, Any
 import os
 import json
-from models import RouteRequest, RouteResult, Driver, SingleRouteRequest, SingleRouteResponse
+from models import RouteRequest, RouteResult, Driver, SingleRouteRequest, SingleRouteResponse, SingleRouteWithSegments
 from trucks import load_truck_specs
 from charging_stations import load_charging_stations
 from route_calculator import calculate_detailed_route, calculate_multi_route
 from optimizer import optimize_routes
+from optily import plan_route
 
 app = FastAPI(title="E-Truck Routing Optimizer")
 
@@ -222,6 +223,31 @@ async def optimize_route(request: RouteRequest):
         return route_result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/calculate-costs", response_model=SingleRouteWithSegments)
+async def calculate_costs(request: SingleRouteRequest, truck_model: str = None, starting_battery_kwh: float = None):
+    """Calculate detailed route costs with segments and charging stops"""
+    try:
+        # Validate truck model if provided
+        if truck_model and truck_model not in truck_specs:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Unknown truck model: {truck_model}. Available models: {list(truck_specs.keys())}"
+            )
+        
+        # Call the enhanced route planner
+        result = plan_route(request, truck_model, starting_battery_kwh)
+        
+        if not result.success:
+            raise HTTPException(status_code=400, detail=result.message)
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error calculating route costs: {str(e)}")
 
 
 @app.get("/health")
