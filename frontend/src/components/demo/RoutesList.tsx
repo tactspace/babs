@@ -1,7 +1,8 @@
 "use client";
 
 import { Route } from "./DemoPage";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2, ChevronDown, ChevronRight, Zap, Clock, DollarSign, MapPin } from "lucide-react";
+import { useState } from "react";
 
 interface RoutesListProps {
   routes: Route[];
@@ -24,6 +25,32 @@ export default function RoutesList({
   onChargingStationsToggle,
   loadingChargingStations
 }: RoutesListProps) {
+  const [expandedRoutes, setExpandedRoutes] = useState<Set<string>>(new Set());
+
+  const toggleExpanded = (routeId: string) => {
+    const newExpanded = new Set(expandedRoutes);
+    if (newExpanded.has(routeId)) {
+      newExpanded.delete(routeId);
+    } else {
+      newExpanded.add(routeId);
+    }
+    setExpandedRoutes(newExpanded);
+  };
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('de-DE', {
+      style: 'currency',
+      currency: 'EUR',
+      minimumFractionDigits: 2
+    }).format(amount);
+  };
+
+  const formatDuration = (minutes: number) => {
+    const hours = Math.floor(minutes / 60);
+    const mins = Math.round(minutes % 60);
+    return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+  };
+
   return (
     <div className="flex-1 px-10 pb-12 overflow-hidden">
       <div className="flex justify-between items-center mb-4">
@@ -71,34 +98,174 @@ export default function RoutesList({
             <p className="text-xs text-gray-400">Add your first route using the form above</p>
           </div>
         ) : (
-          routes.map(route => (
-            <div 
-              key={route.id} 
-              className={`p-4 rounded-md flex justify-between items-center cursor-pointer ${
-                route.id === activeRouteId ? 'bg-primary/10 border border-primary/30' : 'bg-gray-100 hover:bg-gray-200'
-              }`}
-              onClick={() => onRouteSelect(route.id)}
-            >
-              <div>
-                <div className="font-medium">{route.name}</div>
-                <div className="text-xs text-gray-500">
-                  {route.start.lat.toFixed(2)}, {route.start.lng.toFixed(2)} → {route.end.lat.toFixed(2)}, {route.end.lng.toFixed(2)}
-                </div>
-              </div>
-              <button 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRouteDelete(route.id);
-                }}
-                className="p-1 text-gray-500 hover:text-red-500 transition-colors"
-                title="Delete route"
+          routes.map(route => {
+            const isExpanded = expandedRoutes.has(route.id);
+            const hasRouteData = route.routeData && route.routeData.success;
+            
+            return (
+              <div 
+                key={route.id} 
+                className={`rounded-md border transition-colors ${
+                  route.id === activeRouteId ? 'bg-primary/10 border-primary/30' : 'bg-gray-100 hover:bg-gray-200 border-gray-200'
+                }`}
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-              </button>
-            </div>
-          ))
+                {/* Main Route Card */}
+                <div 
+                  className="p-4 cursor-pointer"
+                  onClick={() => onRouteSelect(route.id)}
+                >
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <div className="font-medium">{route.name}</div>
+                      <div className="text-xs text-gray-500 mb-2">
+                        {route.start.lat.toFixed(2)}, {route.start.lng.toFixed(2)} → {route.end.lat.toFixed(2)}, {route.end.lng.toFixed(2)}
+                      </div>
+                      
+                      {/* Route Summary */}
+                      {hasRouteData && (
+                        <div className="flex items-center gap-4 text-xs text-gray-600">
+                          <div className="flex items-center gap-1">
+                            <MapPin className="w-3 h-3" />
+                            <span>{route.distance_km?.toFixed(1)} km</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            <span>{formatDuration(route.duration_minutes || 0)}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <DollarSign className="w-3 h-3" />
+                            <span className="font-medium text-green-600">
+                              {formatCurrency(route.routeData?.total_costs?.total_cost_eur || 0)}
+                            </span>
+                          </div>
+                          {route.routeData?.charging_stops && route.routeData.charging_stops.length > 0 && (
+                            <div className="flex items-center gap-1">
+                              <Zap className="w-3 h-3" />
+                              <span>{route.routeData.charging_stops.length} stops</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      {/* Expand/Collapse Button */}
+                      {hasRouteData && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleExpanded(route.id);
+                          }}
+                          className="p-1 text-gray-500 hover:text-primary transition-colors"
+                        >
+                          {isExpanded ? (
+                            <ChevronDown className="w-4 h-4" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4" />
+                          )}
+                        </button>
+                      )}
+                      
+                      {/* Delete Button */}
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRouteDelete(route.id);
+                        }}
+                        className="p-1 text-gray-500 hover:text-red-500 transition-colors"
+                        title="Delete route"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Expanded Details */}
+                {isExpanded && hasRouteData && (
+                  <div className="px-4 pb-4 border-t border-gray-200 bg-white/50">
+                    <div className="pt-3 space-y-3">
+                      {/* Truck Info */}
+                      <div className="text-sm">
+                        <div className="font-medium text-gray-700 mb-1">Truck Model</div>
+                        <div className="text-gray-600">{route.routeData?.truck_model}</div>
+                        <div className="text-xs text-gray-500">
+                          Battery: {route.routeData?.starting_battery_kwh.toFixed(0)}kWh → {route.routeData?.final_battery_kwh.toFixed(0)}kWh
+                        </div>
+                      </div>
+
+                      {/* Cost Breakdown */}
+                      <div className="text-sm">
+                        <div className="font-medium text-gray-700 mb-2">Cost Breakdown</div>
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div className="flex justify-between">
+                            <span>Driver:</span>
+                            <span>{formatCurrency(route.routeData?.total_costs.driver_cost_eur || 0)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Energy:</span>
+                            <span>{formatCurrency(route.routeData?.total_costs.energy_cost_eur || 0)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Depreciation:</span>
+                            <span>{formatCurrency(route.routeData?.total_costs.depreciation_cost_eur || 0)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Charging:</span>
+                            <span>{formatCurrency(route.routeData?.total_costs.charging_cost_eur || 0)}</span>
+                          </div>
+                        </div>
+                        <div className="mt-2 pt-2 border-t border-gray-200 flex justify-between font-medium">
+                          <span>Total:</span>
+                          <span className="text-green-600">{formatCurrency(route.routeData?.total_costs.total_cost_eur || 0)}</span>
+                        </div>
+                      </div>
+
+                      {/* Route Segments */}
+                      {route.routeData?.route_segments && route.routeData.route_segments.length > 0 && (
+                        <div className="text-sm">
+                          <div className="font-medium text-gray-700 mb-2">Route Segments</div>
+                          <div className="space-y-2">
+                            {route.routeData.route_segments.map((segment, index) => (
+                              <div key={index} className="bg-gray-50 p-2 rounded text-xs">
+                                <div className="font-medium">Segment {segment.segment_number}</div>
+                                <div className="flex justify-between mt-1">
+                                  <span>{segment.distance_km.toFixed(1)} km</span>
+                                  <span>{formatDuration(segment.duration_minutes)}</span>
+                                  <span>{formatCurrency(segment.costs.total_cost_eur)}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Charging Stops */}
+                      {route.routeData?.charging_stops && route.routeData.charging_stops.length > 0 && (
+                        <div className="text-sm">
+                          <div className="font-medium text-gray-700 mb-2">Charging Stops</div>
+                          <div className="space-y-2">
+                            {route.routeData.charging_stops.map((stop, index) => (
+                              <div key={index} className="bg-blue-50 p-2 rounded text-xs">
+                                <div className="font-medium">{stop.charging_station.operator_name}</div>
+                                <div className="text-gray-600">{stop.charging_station.max_power_kW}kW</div>
+                                <div className="flex justify-between mt-1">
+                                  <span>{stop.charging_time_hours.toFixed(1)}h</span>
+                                  <span>{formatCurrency(stop.charging_cost_eur)}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })
         )}
       </div>
     </div>
