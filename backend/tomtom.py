@@ -4,9 +4,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
-# Load API key from environment variable (.env supported)
-# Expected: set TOMTOM_APIKEY (or TOMTOM_API_KEY) to your TomTom key
-TOMTOM_API_KEY = "Nyl0u6F6ObfkryIqEr3QpvQuHkniwMDT"
+TOMTOM_API_KEY = os.getenv("TOMTOM_API_KEY")
 
 def get_route(start_point, end_point, vehicle_type="truck", route_type: str = "fastest"):
     """
