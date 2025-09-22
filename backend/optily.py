@@ -1,14 +1,15 @@
-from models import SingleRouteRequest, SingleRouteResponse, ChargingStation, TruckModel
+from models import SingleRouteRequest, SingleRouteWithSegments, ChargingStation, TruckModel, DetailedRouteSegment, DetailedChargingStop, RouteCosts
 from charging_stations import load_charging_stations
 from tomtom import get_route
 from typing import List, Optional, Dict, Tuple
 from trucks import load_truck_specs, calculate_energy_consumption, calculate_max_range
 import logging
+import math
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def plan_route(request: SingleRouteRequest, truck_model: str = None, starting_battery_kwh: float = None) -> SingleRouteResponse:
+def plan_route(request: SingleRouteRequest, truck_model: str = None, starting_battery_kwh: float = None) -> SingleRouteWithSegments:
     """
     Custom route planner that plans routes between two points with truck capacity and cost calculations.
     
@@ -18,7 +19,7 @@ def plan_route(request: SingleRouteRequest, truck_model: str = None, starting_ba
         starting_battery_kwh: Starting battery charge in kWh (optional, defaults to full battery)
         
     Returns:
-        SingleRouteResponse object with route details including capacity and cost information
+        SingleRouteWithSegments object with route details including segments and cost information
     """
     try:
         # Load data
@@ -47,37 +48,26 @@ def plan_route(request: SingleRouteRequest, truck_model: str = None, starting_ba
         else:
             starting_battery_kwh = min(starting_battery_kwh, truck.battery_capacity)
         
-        # Plan route (handles both direct and segmented routes)
-        return _plan_segmented_route(request, truck, charging_stations, starting_battery_kwh)
+        # Plan route using simplified approach
+        return _plan_simplified_route(request, truck, charging_stations, starting_battery_kwh, truck_model)
             
     except Exception as e:
         return _create_error_response(request, f"Unexpected error: {str(e)}")
 
 
-def _plan_segmented_route(request: SingleRouteRequest, truck: TruckModel, charging_stations: List[ChargingStation], starting_battery_kwh: float) -> SingleRouteResponse:
+def _plan_simplified_route(request: SingleRouteRequest, truck: TruckModel, charging_stations: List[ChargingStation], starting_battery_kwh: float, truck_model: str) -> SingleRouteWithSegments:
     """
-    Plan route in segments with charging stops when battery gets low (~20%)
-    
-    Args:
-        request: Route request
-        truck: Truck model
-        charging_stations: Available charging stations
-        starting_battery_kwh: Starting battery level
-        
-    Returns:
-        SingleRouteResponse with segmented route details
+    Simplified route planning: find charging stations at max range points
     """
-    LOW_BATTERY_THRESHOLD = 0.20  # 20% of battery capacity
-    MIN_BATTERY_RESERVE = truck.battery_capacity * LOW_BATTERY_THRESHOLD
-    
     route_segments = []
     charging_stops = []
+    detailed_segments = []
+    detailed_charging_stops = []
     total_costs = {
         "driver_cost": 0,
         "energy_cost": 0,
         "depreciation_cost": 0,
         "tolls_cost": 0,
-        "total_cost": 0,
         "charging_cost": 0
     }
     
@@ -85,75 +75,197 @@ def _plan_segmented_route(request: SingleRouteRequest, truck: TruckModel, chargi
     current_position = (request.start_lat, request.start_lng)
     destination = (request.end_lat, request.end_lng)
     
-    # Get the original route coordinates once for the entire journey
-    original_route_data = get_route(current_position, destination, vehicle_type="truck", route_type="fastest")
-    if not original_route_data:
-        return _create_error_response(request, "Failed to get original route from TomTom API")
+    # NEW: First check if destination is reachable directly with 80% battery
+    direct_distance = _get_route_distance(current_position, destination)
+    if direct_distance > 0:
+        energy_needed = calculate_energy_consumption(direct_distance, truck)
+        # Check if we can reach with 80% of battery capacity (safety margin)
+        max_usable_battery = truck.battery_capacity * 0.8
+        
+        if current_battery >= energy_needed and energy_needed <= max_usable_battery:
+            # Can reach destination directly!
+            print(f"Direct route possible: {direct_distance:.1f}km, Energy needed: {energy_needed:.1f}kWh, Current battery: {current_battery:.1f}kWh")
+            
+            # Create direct route segment
+            direct_segment = _create_route_segment(current_position, destination, truck)
+            if direct_segment:
+                route_segments.append(direct_segment)
+                _add_segment_costs(direct_segment, total_costs)
+                
+                # Create detailed segment
+                detailed_segment = DetailedRouteSegment(
+                    segment_number=1,
+                    start_point=current_position,
+                    end_point=destination,
+                    distance_km=direct_segment["distance_km"],
+                    duration_minutes=direct_segment["duration_minutes"],
+                    energy_consumption_kwh=direct_segment["energy_consumption"],
+                    coordinates=direct_segment["coordinates"],
+                    costs=_calculate_segment_costs_dict(direct_segment)
+                )
+                detailed_segments.append(detailed_segment)
+                
+                # Create success message for direct route
+                message = _create_direct_route_success_message(truck, direct_segment, total_costs)
+                
+                # Create route costs object
+                route_costs = RouteCosts(
+                    driver_cost_eur=total_costs["driver_cost"],
+                    energy_cost_eur=total_costs["energy_cost"],
+                    depreciation_cost_eur=total_costs["depreciation_cost"],
+                    tolls_cost_eur=total_costs["tolls_cost"],
+                    charging_cost_eur=total_costs["charging_cost"],
+                    total_cost_eur=sum(total_costs.values())
+                )
+                
+                return SingleRouteWithSegments(
+                    distance_km=direct_segment["distance_km"],
+                    route_name=request.route_name or f"{truck.manufacturer} {truck.model} Direct Route",
+                    duration_minutes=direct_segment["duration_minutes"],
+                    success=True,
+                    message=message,
+                    route_segments=detailed_segments,
+                    charging_stops=detailed_charging_stops,
+                    total_costs=route_costs,
+                    truck_model=truck_model,
+                    starting_battery_kwh=starting_battery_kwh,
+                    final_battery_kwh=current_battery - direct_segment["energy_consumption"]
+                )
     
-    route_coordinates = [
-        {"latitude": point["latitude"], "longitude": point["longitude"]}
-        for point in original_route_data["coordinates"]
-    ]
-    
+    # If direct route not possible, proceed with charging station planning
     segment_count = 0
     
     while True:
         segment_count += 1
         
-        # Check if we can reach destination directly
-        direct_distance = _get_route_distance(current_position, destination)
-        if direct_distance > 0:
-            energy_needed = calculate_energy_consumption(direct_distance, truck)
-            
-            if current_battery >= energy_needed:
-                # Can reach destination directly
-                segment = _create_route_segment(current_position, destination, truck)
-                if segment:
-                    route_segments.append(segment)
-                    _add_segment_costs(segment, total_costs)
-                    logger.info(f"Direct route is possible. Found segment {len(route_segments)}")
-                break
+        # Step 1: Calculate max range (until 20% battery remaining) in KM
+        max_range_km = _calculate_max_range_until_20_percent(truck, current_battery)
         
-        # Need to find charging station using route-based heuristics
-        max_range = calculate_max_range(truck, current_battery)
-        charging_station = _find_best_charging_station(
-            current_position, destination, charging_stations, max_range, route_coordinates
-        )
+        # Step 2: Find the point at max range along the route to destination
+        max_range_point = _find_point_at_distance(current_position, destination, max_range_km)
         
-        if not charging_station:
+        # Step 3: Find 5 closest charging stations to this max range point
+        candidate_stations = _find_closest_stations_to_point(max_range_point, charging_stations, num_candidates=5)
+        
+        # Step 4: Select best station based on cost and power capacity
+        best_station = _select_best_station_by_score(candidate_stations)
+        
+        if not best_station:
             return _create_error_response(request, f"No suitable charging station found for segment {segment_count}")
         
-        # Create segment to charging station
-        charging_position = (charging_station.latitude, charging_station.longitude)
-        segment = _create_route_segment(current_position, charging_position, truck)
+        # Step 5: Check if we can reach destination directly from this station
+        station_position = (best_station.latitude, best_station.longitude)
+        direct_distance = _get_route_distance(station_position, destination)
         
+        if direct_distance > 0:
+            energy_needed = calculate_energy_consumption(direct_distance, truck)
+            # Assume we charge to 80% at the station
+            charged_battery = truck.battery_capacity * 0.8
+            
+            if charged_battery >= energy_needed:
+                # Can reach destination directly from this station
+                # Create segment to charging station
+                segment_to_station = _create_route_segment(current_position, station_position, truck)
+                if segment_to_station:
+                    route_segments.append(segment_to_station)
+                    _add_segment_costs(segment_to_station, total_costs)
+                    
+                    # Create detailed segment
+                    detailed_segment = DetailedRouteSegment(
+                        segment_number=segment_count,
+                        start_point=current_position,
+                        end_point=station_position,
+                        distance_km=segment_to_station["distance_km"],
+                        duration_minutes=segment_to_station["duration_minutes"],
+                        energy_consumption_kwh=segment_to_station["energy_consumption"],
+                        coordinates=segment_to_station["coordinates"],
+                        costs=_calculate_segment_costs_dict(segment_to_station)
+                    )
+                    detailed_segments.append(detailed_segment)
+                
+                # Add charging stop
+                charging_stop = _create_charging_stop(best_station, segment_count, current_battery, segment_to_station["energy_consumption"], truck)
+                charging_stops.append(charging_stop)
+                _add_charging_costs(charging_stop, total_costs)
+                
+                # Create detailed charging stop
+                detailed_charging_stop = DetailedChargingStop(
+                    stop_number=segment_count,
+                    charging_station=best_station,
+                    arrival_battery_kwh=charging_stop["arrival_battery"],
+                    energy_to_charge_kwh=charging_stop["energy_to_charge"],
+                    charging_time_hours=charging_stop["charging_time_hours"],
+                    charging_cost_eur=charging_stop["charging_cost"],
+                    departure_battery_kwh=truck.battery_capacity * 0.8
+                )
+                detailed_charging_stops.append(detailed_charging_stop)
+                
+                # Create final segment to destination
+                final_segment = _create_route_segment(station_position, destination, truck)
+                if final_segment:
+                    route_segments.append(final_segment)
+                    _add_segment_costs(final_segment, total_costs)
+                    
+                    # Create detailed final segment
+                    detailed_final_segment = DetailedRouteSegment(
+                        segment_number=segment_count + 1,
+                        start_point=station_position,
+                        end_point=destination,
+                        distance_km=final_segment["distance_km"],
+                        duration_minutes=final_segment["duration_minutes"],
+                        energy_consumption_kwh=final_segment["energy_consumption"],
+                        coordinates=final_segment["coordinates"],
+                        costs=_calculate_segment_costs_dict(final_segment)
+                    )
+                    detailed_segments.append(detailed_final_segment)
+                
+                break
+        
+        # Step 6: Create segment to charging station
+        segment = _create_route_segment(current_position, station_position, truck)
         if not segment:
             return _create_error_response(request, f"Failed to create route segment {segment_count}")
         
         route_segments.append(segment)
         _add_segment_costs(segment, total_costs)
         
-        # Add charging stop
-        charging_stop = {
-            "station": charging_station,
-            "segment": segment_count,
-            "arrival_battery": current_battery - segment["energy_consumption"],
-            "charging_time_hours": 1.0,  # Assume 1 hour charging
-            "charging_cost": _calculate_charging_cost(charging_station, truck.battery_capacity * 0.8)  # Charge to 80%
-        }
+        # Create detailed segment
+        detailed_segment = DetailedRouteSegment(
+            segment_number=segment_count,
+            start_point=current_position,
+            end_point=station_position,
+            distance_km=segment["distance_km"],
+            duration_minutes=segment["duration_minutes"],
+            energy_consumption_kwh=segment["energy_consumption"],
+            coordinates=segment["coordinates"],
+            costs=_calculate_segment_costs_dict(segment)
+        )
+        detailed_segments.append(detailed_segment)
+        
+        # Step 7: Add charging stop
+        charging_stop = _create_charging_stop(best_station, segment_count, current_battery, segment["energy_consumption"], truck)
         charging_stops.append(charging_stop)
+        _add_charging_costs(charging_stop, total_costs)
         
-        # Add charging costs
-        total_costs["charging_cost"] += charging_stop["charging_cost"]
-        total_costs["driver_cost"] += 35.0 * charging_stop["charging_time_hours"]  # Driver waiting time
+        # Create detailed charging stop
+        detailed_charging_stop = DetailedChargingStop(
+            stop_number=segment_count,
+            charging_station=best_station,
+            arrival_battery_kwh=charging_stop["arrival_battery"],
+            energy_to_charge_kwh=charging_stop["energy_to_charge"],
+            charging_time_hours=charging_stop["charging_time_hours"],
+            charging_cost_eur=charging_stop["charging_cost"],
+            departure_battery_kwh=truck.battery_capacity * 0.8
+        )
+        detailed_charging_stops.append(detailed_charging_stop)
         
-        # Update current position and battery
-        current_position = charging_position
+        # Step 8: Update current position and battery
+        current_position = station_position
         current_battery = truck.battery_capacity * 0.8  # Charge to 80%
         
         print(f"Segment {segment_count}: {segment['distance_km']:.1f}km, "
               f"Energy used: {segment['energy_consumption']:.1f}kWh, "
-              f"Charging at: {charging_station.operator_name}")
+              f"Charging at: {best_station.operator_name}")
     
     # Combine all coordinates from segments
     all_coordinates = []
@@ -166,137 +278,224 @@ def _plan_segmented_route(request: SingleRouteRequest, truck: TruckModel, chargi
         total_duration += segment["duration_minutes"]
     
     # Create success message
-    message = _create_segmented_success_message(truck, route_segments, total_costs, charging_stops)
+    message = _create_simplified_success_message(truck, route_segments, total_costs, charging_stops)
     
-    return SingleRouteResponse(
+    # Create route costs object
+    route_costs = RouteCosts(
+        driver_cost_eur=total_costs["driver_cost"],
+        energy_cost_eur=total_costs["energy_cost"],
+        depreciation_cost_eur=total_costs["depreciation_cost"],
+        tolls_cost_eur=total_costs["tolls_cost"],
+        charging_cost_eur=total_costs["charging_cost"],
+        total_cost_eur=sum(total_costs.values())
+    )
+    
+    # Calculate final battery level
+    final_battery = current_battery
+    if route_segments:
+        final_segment = route_segments[-1]
+        final_battery = current_battery - final_segment["energy_consumption"]
+    
+    return SingleRouteWithSegments(
         distance_km=total_distance,
-        route_name=request.route_name or f"{truck.manufacturer} {truck.model} Segmented Route",
+        route_name=request.route_name or f"{truck.manufacturer} {truck.model} Route",
         duration_minutes=total_duration,
-        coordinates=all_coordinates,
         success=True,
-        message=message
+        message=message,
+        route_segments=detailed_segments,
+        charging_stops=detailed_charging_stops,
+        total_costs=route_costs,
+        truck_model=truck_model,
+        starting_battery_kwh=starting_battery_kwh,
+        final_battery_kwh=final_battery
     )
 
 
-def _find_best_charging_station(current_position: Tuple[float, float], destination: Tuple[float, float], 
-                               charging_stations: List[ChargingStation], max_range: float, route_coordinates: List[Dict] = None) -> Optional[ChargingStation]:
+def _calculate_max_range_until_20_percent(truck: TruckModel, current_battery: float) -> float:
     """
-    Find the best charging station within range using route-based heuristics
+    Calculate maximum range in KM until battery drops to 20%
     """
+    MIN_BATTERY_PERCENT = 0.20
+    min_battery_kwh = truck.battery_capacity * MIN_BATTERY_PERCENT
+    usable_battery = current_battery - min_battery_kwh
+    
+    if usable_battery <= 0:
+        return 0.0
+    
+    return usable_battery / truck.consumption
+
+
+def _find_point_at_distance(start_point: Tuple[float, float], end_point: Tuple[float, float], distance_km: float) -> Tuple[float, float]:
+    """
+    Find a point at a specific distance along the route from start to end
+    Uses TomTom API route coordinates for accurate positioning
+    """
+    try:
+        # Get the full route from TomTom API
+        route_data = get_route(start_point, end_point, vehicle_type="truck", route_type="fastest")
+        
+        if not route_data:
+            return start_point
+        
+        # Extract route coordinates
+        route_coordinates = route_data["coordinates"]
+        
+        if not route_coordinates:
+            return start_point
+        
+        # Calculate cumulative distances along the route
+        cumulative_distance = 0.0
+        target_distance_meters = distance_km * 1000  # Convert to meters
+        
+        for i in range(len(route_coordinates) - 1):
+            current_point = route_coordinates[i]
+            next_point = route_coordinates[i + 1]
+            
+            # Calculate distance between consecutive points
+            segment_distance = _calculate_segment_distance(current_point, next_point)
+            
+            # Check if target distance falls within this segment
+            if cumulative_distance + segment_distance >= target_distance_meters:
+                # Find the exact point within this segment
+                remaining_distance = target_distance_meters - cumulative_distance
+                ratio = remaining_distance / segment_distance
+                
+                # Interpolate between current and next point
+                lat1, lon1 = current_point["latitude"], current_point["longitude"]
+                lat2, lon2 = next_point["latitude"], next_point["longitude"]
+                
+                interpolated_lat = lat1 + (lat2 - lat1) * ratio
+                interpolated_lon = lon1 + (lon2 - lon1) * ratio
+                
+                return (interpolated_lat, interpolated_lon)
+            
+            cumulative_distance += segment_distance
+        
+        # If target distance exceeds total route, return end point
+        return (route_coordinates[-1]["latitude"], route_coordinates[-1]["longitude"])
+        
+    except Exception as e:
+        print(f"Error finding point at distance: {e}")
+        return start_point
+
+
+def _calculate_segment_distance(point1: Dict, point2: Dict) -> float:
+    """
+    Calculate distance between two route points using Haversine formula
+    """
+    lat1, lon1 = point1["latitude"], point1["longitude"]
+    lat2, lon2 = point2["latitude"], point2["longitude"]
+    
+    # Haversine formula for accurate distance calculation
+    R = 6371000  # Earth radius in meters
+    
+    lat1_rad = math.radians(lat1)
+    lon1_rad = math.radians(lon1)
+    lat2_rad = math.radians(lat2)
+    lon2_rad = math.radians(lon2)
+    
+    dlat = lat2_rad - lat1_rad
+    dlon = lon2_rad - lon1_rad
+    
+    a = math.sin(dlat / 2)**2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    
+    return R * c  # Distance in meters
+
+
+def _find_closest_stations_to_point(target_point: Tuple[float, float], charging_stations: List[ChargingStation], num_candidates: int = 5) -> List[ChargingStation]:
+    """
+    Find the closest charging stations to a target point using Euclidean distance
+    """
+    station_distances = []
+    
+    for station in charging_stations:
+        distance = _euclidean_distance(target_point, (station.latitude, station.longitude))
+        station_distances.append((station, distance))
+    
+    # Sort by distance and take top candidates
+    station_distances.sort(key=lambda x: x[1])
+    candidates = [station for station, _ in station_distances[:num_candidates]]
+    
+    print(f"Found {len(candidates)} closest stations to target point")
+    for i, station in enumerate(candidates):
+        distance = station_distances[i][1]
+        print(f"  {i+1}. {station.operator_name} - {distance:.1f}km away")
+    
+    return candidates
+
+
+def _select_best_station_by_score(candidate_stations: List[ChargingStation]) -> Optional[ChargingStation]:
+    """
+    Select the best station based on cost and power capacity score
+    Lower score is better
+    """
+    if not candidate_stations:
+        return None
+    
     best_station = None
     best_score = float('inf')
     
-    if route_coordinates:
-        # Use route-based filtering for much faster performance
-        candidate_stations = _find_stations_along_route(current_position, destination, charging_stations, max_range, route_coordinates)
-    else:
-        # Fallback to old method if no route coordinates provided
-        candidate_stations = _find_stations_in_range_old_method(current_position, charging_stations, max_range)
-    
-    print(f"Checking {len(candidate_stations)} candidate charging stations...")
-    
     for station in candidate_stations:
-        # Get accurate distance using TomTom API
-        route_to_station = _get_route_distance(current_position, (station.latitude, station.longitude))
+        # Score = (charging_cost_weight * price) + (power_weight / max_power)
+        # Lower price and higher power = better score
+        charging_cost_weight = 0.7  # 70% weight on cost
+        power_weight = 0.3  # 30% weight on power
         
-        if route_to_station and route_to_station <= max_range:
-            # Calculate score: prefer stations closer to destination
-            route_to_destination = _get_route_distance((station.latitude, station.longitude), destination)
-            
-            if route_to_destination:
-                # Score based on distance to destination (lower is better)
-                score = route_to_destination
-                
-                if score < best_score:
-                    best_score = score
-                    best_station = station
-                    print(f"Found better station: {station.operator_name} "
-                          f"(distance to station: {route_to_station:.1f}km, "
-                          f"distance to destination: {score:.1f}km)")
+        cost_score = charging_cost_weight * station.price_per_kWh
+        power_score = power_weight / station.max_power_kW if station.max_power_kW > 0 else float('inf')
+        
+        total_score = cost_score + power_score
+        
+        print(f"Station {station.operator_name}: Cost={station.price_per_kWh:.3f}€/kWh, "
+              f"Power={station.max_power_kW}kW, Score={total_score:.4f}")
+        
+        if total_score < best_score:
+            best_score = total_score
+            best_station = station
     
     if best_station:
-        print(f"Selected charging station: {best_station.operator_name}")
-    else:
-        print("No suitable charging station found within range")
+        print(f"Selected: {best_station.operator_name} with score {best_score:.4f}")
     
     return best_station
 
 
-def _find_stations_along_route(current_position: Tuple[float, float], destination: Tuple[float, float], 
-                              charging_stations: List[ChargingStation], max_range: float, route_coordinates: List[Dict]) -> List[ChargingStation]:
+def _create_charging_stop(station: ChargingStation, segment_count: int, current_battery: float, energy_used: float, truck: TruckModel) -> Dict:
     """
-    Find charging stations that are within 10km of the planned route
+    Create a charging stop record
     """
-    DETOUR_RANGE_KM = 10.0  # 10km detour range
-    candidate_stations = []
+    arrival_battery = current_battery - energy_used
+    energy_to_charge = (truck.battery_capacity * 0.8) - arrival_battery  # Charge to 80%
+    charging_cost = energy_to_charge * station.price_per_kWh
     
-    # Calculate current position index in route coordinates
-    current_index = _find_closest_route_point(current_position, route_coordinates)
-    
-    # Only check stations that are ahead of current position
-    relevant_coordinates = route_coordinates[current_index:]
-    
-    print(f"Checking stations along route from position {current_index}/{len(route_coordinates)}")
-    
-    for station in charging_stations:
-        # Quick check: is station within 10km of any point on the route?
-        min_distance_to_route = _min_distance_to_route_segment(station, relevant_coordinates)
-        
-        if min_distance_to_route <= DETOUR_RANGE_KM:
-            # Additional check: is station reachable with current battery?
-            rough_distance_to_station = _rough_distance_estimate(current_position, (station.latitude, station.longitude))
-            
-            if rough_distance_to_station <= max_range:
-                candidate_stations.append(station)
-                print(f"Station {station.operator_name} is {min_distance_to_route:.1f}km from route")
-    
-    return candidate_stations
+    return {
+        "station": station,
+        "segment": segment_count,
+        "arrival_battery": arrival_battery,
+        "energy_to_charge": energy_to_charge,
+        "charging_time_hours": energy_to_charge / station.max_power_kW if station.max_power_kW > 0 else 1.0,
+        "charging_cost": charging_cost
+    }
 
 
-def _find_closest_route_point(position: Tuple[float, float], route_coordinates: List[Dict]) -> int:
-    """
-    Find the index of the route coordinate closest to current position
-    """
-    min_distance = float('inf')
-    closest_index = 0
-    
-    for i, coord in enumerate(route_coordinates):
-        distance = _rough_distance_estimate(position, (coord['latitude'], coord['longitude']))
-        if distance < min_distance:
-            min_distance = distance
-            closest_index = i
-    
-    return closest_index
+def _add_charging_costs(charging_stop: Dict, total_costs: Dict[str, float]):
+    """Add charging costs to total costs"""
+    total_costs["charging_cost"] += charging_stop["charging_cost"]
+    total_costs["driver_cost"] += 35.0 * charging_stop["charging_time_hours"]  # Driver waiting time
 
 
-def _min_distance_to_route_segment(station: ChargingStation, route_coordinates: List[Dict]) -> float:
+def _euclidean_distance(point1: Tuple[float, float], point2: Tuple[float, float]) -> float:
     """
-    Calculate minimum distance from station to any point on the route segment
+    Calculate Euclidean distance between two points (rough approximation)
     """
-    min_distance = float('inf')
-    station_pos = (station.latitude, station.longitude)
+    lat1, lon1 = point1
+    lat2, lon2 = point2
     
-    for coord in route_coordinates:
-        distance = _rough_distance_estimate(station_pos, (coord['latitude'], coord['longitude']))
-        if distance < min_distance:
-            min_distance = distance
+    # Rough conversion: 1 degree ≈ 111 km
+    lat_diff = (lat2 - lat1) * 111
+    lon_diff = (lon2 - lon1) * 111 * 0.7  # Adjust for longitude at European latitudes
     
-    return min_distance
-
-
-def _find_stations_in_range_old_method(current_position: Tuple[float, float], charging_stations: List[ChargingStation], max_range: float) -> List[ChargingStation]:
-    """
-    Fallback method: find stations within range using old approach
-    """
-    candidate_stations = []
-    distance_margin_km = 10
-    
-    for station in charging_stations:
-        rough_distance = _rough_distance_estimate(current_position, (station.latitude, station.longitude)) + distance_margin_km
-        if rough_distance <= max_range:  
-            candidate_stations.append(station)
-    
-    return candidate_stations
+    return (lat_diff**2 + lon_diff**2)**0.5
 
 
 def _get_route_distance(start_point: Tuple[float, float], end_point: Tuple[float, float]) -> float:
@@ -320,20 +519,6 @@ def _get_route_distance(start_point: Tuple[float, float], end_point: Tuple[float
     except Exception as e:
         print(f"Error getting route distance: {e}")
         return 0.0
-
-
-def _rough_distance_estimate(point1: Tuple[float, float], point2: Tuple[float, float]) -> float:
-    """
-    Rough distance estimate for filtering (not for final calculations)
-    """
-    lat1, lon1 = point1
-    lat2, lon2 = point2
-    
-    # Rough conversion: 1 degree ≈ 111 km
-    lat_diff = (lat2 - lat1) * 111
-    lon_diff = (lon2 - lon1) * 111 * 0.7  # Adjust for longitude at European latitudes
-    
-    return (lat_diff**2 + lon_diff**2)**0.5
 
 
 def _create_route_segment(start_point: Tuple[float, float], end_point: Tuple[float, float], truck: TruckModel) -> Optional[Dict]:
@@ -387,17 +572,38 @@ def _add_segment_costs(segment: Dict, total_costs: Dict[str, float]):
     total_costs["tolls_cost"] += TOLLS_PER_KM * distance_km
 
 
-def _calculate_charging_cost(station: ChargingStation, energy_to_charge: float) -> float:
-    """Calculate charging cost at a station"""
-    return energy_to_charge * station.price_per_kWh
+def _calculate_segment_costs_dict(segment: Dict) -> Dict[str, float]:
+    """Calculate costs for a single segment and return as dictionary"""
+    duration_hours = segment["duration_minutes"] / 60
+    distance_km = segment["distance_km"]
+    energy_consumption = segment["energy_consumption"]
+    
+    # Cost parameters
+    DRIVER_HOURLY_PAY = 35.0
+    ENERGY_COST_PER_KWH = 0.39
+    DEPRECIATION_PER_KM = 0.05
+    TOLLS_PER_KM = 0.00
+    
+    driver_cost = DRIVER_HOURLY_PAY * duration_hours
+    energy_cost = ENERGY_COST_PER_KWH * energy_consumption
+    depreciation_cost = DEPRECIATION_PER_KM * distance_km
+    tolls_cost = TOLLS_PER_KM * distance_km
+    
+    return {
+        "driver_cost_eur": driver_cost,
+        "energy_cost_eur": energy_cost,
+        "depreciation_cost_eur": depreciation_cost,
+        "tolls_cost_eur": tolls_cost,
+        "total_cost_eur": driver_cost + energy_cost + depreciation_cost + tolls_cost
+    }
 
 
-def _create_segmented_success_message(truck: TruckModel, route_segments: List[Dict], total_costs: Dict[str, float], charging_stops: List[Dict]) -> str:
-    """Create success message for segmented route"""
+def _create_simplified_success_message(truck: TruckModel, route_segments: List[Dict], total_costs: Dict[str, float], charging_stops: List[Dict]) -> str:
+    """Create success message for simplified route"""
     total_distance = sum(segment["distance_km"] for segment in route_segments)
     total_duration = sum(segment["duration_minutes"] for segment in route_segments)
     
-    message = f"Segmented route planned successfully!\n"
+    message = f"Route planned successfully!\n"
     message += f"Truck: {truck.manufacturer} {truck.model}\n"
     message += f"Total distance: {total_distance:.1f} km\n"
     message += f"Total duration: {total_duration:.1f} minutes\n"
@@ -414,8 +620,9 @@ def _create_segmented_success_message(truck: TruckModel, route_segments: List[Di
     if charging_stops:
         message += "\nCharging stops:\n"
         for i, stop in enumerate(charging_stops, 1):
-            message += f"Stop {i}: {stop['station'].operator_name}, "
-            message += f"Cost: €{stop['charging_cost']:.2f}\n"
+            message += f"Stop {i}: {stop['station'].operator_name}, Stop_id: {stop['station'].id} "
+            message += f"Cost: €{stop['charging_cost']:.2f}, "
+            message += f"Power: {stop['station'].max_power_kW}kW\n"
     
     # Add cost breakdown
     message += f"\nCost breakdown:\n"
@@ -424,7 +631,34 @@ def _create_segmented_success_message(truck: TruckModel, route_segments: List[Di
     message += f"Depreciation: €{total_costs['depreciation_cost']:.2f}\n"
     message += f"Tolls: €{total_costs['tolls_cost']:.2f}\n"
     message += f"Charging: €{total_costs['charging_cost']:.2f}\n"
-    message += f"Total: €{total_costs['total_cost'] + total_costs['charging_cost']:.2f}"
+    message += f"Total: €{sum(total_costs.values()):.2f}"
+    
+    return message
+
+
+def _create_direct_route_success_message(truck: TruckModel, segment: Dict, total_costs: Dict[str, float]) -> str:
+    """Create success message for direct route"""
+    total_distance = segment["distance_km"]
+    total_duration = segment["duration_minutes"]
+    
+    message = f"Direct route planned successfully!\n"
+    message += f"Truck: {truck.manufacturer} {truck.model}\n"
+    message += f"Total distance: {total_distance:.1f} km\n"
+    message += f"Total duration: {total_duration:.1f} minutes\n"
+    message += f"Number of segments: 1\n"
+    message += f"Charging stops: 0\n\n"
+    
+    message += f"Segment: {segment['distance_km']:.1f}km, "
+    message += f"{segment['duration_minutes']:.1f}min, "
+    message += f"{segment['energy_consumption']:.1f}kWh\n"
+    
+    message += f"\nCost breakdown:\n"
+    message += f"Driver: €{total_costs['driver_cost']:.2f}\n"
+    message += f"Energy: €{total_costs['energy_cost']:.2f}\n"
+    message += f"Depreciation: €{total_costs['depreciation_cost']:.2f}\n"
+    message += f"Tolls: €{total_costs['tolls_cost']:.2f}\n"
+    message += f"Charging: €{total_costs['charging_cost']:.2f}\n"
+    message += f"Total: €{sum(total_costs.values()):.2f}"
     
     return message
 
@@ -466,34 +700,21 @@ def _calculate_route_costs(distance_km: float, duration_hours: float, energy_con
     }
 
 
-def _create_error_response(request: SingleRouteRequest, message: str) -> SingleRouteResponse:
+def _create_error_response(request: SingleRouteRequest, message: str) -> SingleRouteWithSegments:
     """Helper function to create error responses"""
-    return SingleRouteResponse(
+    return SingleRouteWithSegments(
         distance_km=0.0,
         route_name=request.route_name or "Custom Route",
         duration_minutes=0.0,
-        coordinates=[],
         success=False,
-        message=message
+        message=message,
+        route_segments=[],
+        charging_stops=[],
+        total_costs=None,
+        truck_model=None,
+        starting_battery_kwh=None,
+        final_battery_kwh=None
     )
-
-
-def _create_success_message(truck: TruckModel, energy_consumption: float, remaining_battery: float, feasible: bool, costs: Dict[str, float]) -> str:
-    """Helper function to create success messages with truck information and costs"""
-    message = f"Route planned successfully. "
-    message += f"Truck: {truck.manufacturer} {truck.model}, "
-    message += f"Energy consumption: {energy_consumption:.1f} kWh, "
-    message += f"Remaining battery: {remaining_battery:.1f} kWh\n"
-    
-    # Add cost breakdown
-    message += f"Cost breakdown: "
-    message += f"Driver: €{costs['driver_cost']:.2f}, "
-    message += f"Energy: €{costs['energy_cost']:.2f}, "
-    message += f"Depreciation: €{costs['depreciation_cost']:.2f}, "
-    message += f"Tolls: €{costs['tolls_cost']:.2f}\n"
-    message += f"Total cost: €{costs['total_cost']:.2f} (€{costs['cost_per_km']:.2f}/km)"
-    
-    return message
 
 
 if __name__ == "__main__": 
@@ -508,6 +729,14 @@ if __name__ == "__main__":
         end_lng=9.18,
         route_name="Frankfurt to Stuttgart"
     )
+
+    berlin_munich = SingleRouteRequest(
+        start_lat=52.52,
+        start_lng=13.405,
+        end_lat=48.14,
+        end_lng=11.58,
+        route_name="Berlin to Munich"
+    )
     
     # Test with a specific truck model
     if trucks:
@@ -515,13 +744,7 @@ if __name__ == "__main__":
         print(f"\nTesting with truck: {first_truck}")
         
         res = plan_route(
-            SingleRouteRequest(
-                start_lat=52.52,
-                start_lng=13.405,
-                end_lat=48.8566,
-                end_lng=2.3522,
-                route_name="Berlin to Paris"
-            ),
+            berlin_munich,
             truck_model=first_truck,
             starting_battery_kwh=400
         )
@@ -530,6 +753,8 @@ if __name__ == "__main__":
         else:
             print("Error: cant go in one go")
 
+
+        print("*"*100)
         res2 = plan_route(
             frankfurt_stuttgart,
             truck_model=first_truck,
