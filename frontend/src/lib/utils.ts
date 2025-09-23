@@ -6,3 +6,4 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export const BASE_URL = "https://optily.eu/api";
+// export const BASE_URL = "http://localhost:8000";
