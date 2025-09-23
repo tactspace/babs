@@ -23,6 +23,7 @@ export interface Route {
   routeData?: SingleRouteWithSegments;
   segments?: Array<{lat: number, lng: number}>[];
   chargingStops?: Array<{lat: number, lng: number}>;
+  driverBreaks?: Array<{lat: number, lng: number}>;
 }
 
 export default function DemoPage() {
@@ -185,6 +186,15 @@ export default function DemoPage() {
                 lng: stop.charging_station.longitude
               }));
             }
+
+            // Extract driver break locations
+            let driverBreakLocations: Array<{lat: number, lng: number}> = [];
+            if (routeData.driver_breaks && Array.isArray(routeData.driver_breaks)) {
+              driverBreakLocations = routeData.driver_breaks.map(breakItem => ({
+                lat: breakItem.location[0],
+                lng: breakItem.location[1]
+              }));
+            }
             
             // Update the existing route with enhanced data
             setRoutes(prev => prev.map(r => 
@@ -196,7 +206,8 @@ export default function DemoPage() {
                     duration_minutes: routeData.duration_minutes,
                     routeData: routeData,
                     segments: segmentPaths,
-                    chargingStops: chargingStopLocations
+                    chargingStops: chargingStopLocations,
+                    driverBreaks: driverBreakLocations
                   }
                 : r
             ));

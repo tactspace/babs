@@ -11,11 +11,11 @@ export interface DetailedRouteSegment {
 }>;
   costs: {
     driver_cost_eur: number;
-    energy_cost_eur: number;
     depreciation_cost_eur: number;
     tolls_cost_eur: number;
     total_cost_eur: number;
   };
+  driver_id?: string;
 }
 
 export interface DetailedChargingStop {
@@ -37,9 +37,37 @@ export interface DetailedChargingStop {
   departure_battery_kwh: number;
 }
 
+export interface DetailedDriverBreak {
+  break_number: number;
+  break_type: "short_break" | "long_rest";
+  location: [number, number];
+  start_time_minutes: number;
+  duration_minutes: number;
+  reason: string;
+  charging_station?: {
+    id: number;
+    country: string;
+    latitude: number;
+    longitude: number;
+    truck_suitability: string;
+    operator_name: string;
+    max_power_kW: number;
+    price_per_kWh: number;
+  };
+}
+
+export interface Driver {
+  id: string;
+  name?: string;
+  current_location: [number, number];
+  home_location: [number, number];
+  mins_driven: number;
+  continuous_driving_minutes: number;
+  breaks_taken_min: number;
+}
+
 export interface RouteCosts {
   driver_cost_eur: number;
-  energy_cost_eur: number;
   depreciation_cost_eur: number;
   tolls_cost_eur: number;
   charging_cost_eur: number;
@@ -58,8 +86,11 @@ export interface SingleRouteWithSegments {
   message?: string;
   route_segments: DetailedRouteSegment[];
   charging_stops: DetailedChargingStop[];
+  driver_breaks: DetailedDriverBreak[];
+  driver?: Driver;
   total_costs: RouteCosts;
   truck_model: string;
   starting_battery_kwh: number;
   final_battery_kwh: number;
+  eu_compliant: boolean;
 }

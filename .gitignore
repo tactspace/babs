@@ -7,3 +7,5 @@ backend/env/
 
 frontend/.next/
 frontend/node_modules/
+.vscode/
+backend/.DS_Store

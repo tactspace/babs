@@ -39,30 +39,33 @@ class DriverBreakType(str, Enum):
 
 
 class DriverBreak(BaseModel):
-    """Model representing a driver break"""
+    """Model representing a driver break (used by route_calculator.py)"""
     break_type: DriverBreakType
-    location: Tuple[float, float]  # (latitude, longitude)
+    location: List[float]  # [latitude, longitude] as expected by route_calculator
     start_time: float  # seconds from start of journey
     duration: float  # in seconds
 
 
 class Driver(BaseModel):
-    """Model representing a driver"""
+    """Simplified driver model with essential attributes"""
     id: str
-    name: str
-    max_continuous_hours: float = 4.5
-    short_break_minutes: float = 45
-    max_daily_hours: float = 9.0
-    long_rest_hours: float = 11.0
+    name: Optional[str] = None
+    current_location: Tuple[float, float]  # (latitude, longitude)
+    home_location: Tuple[float, float]  # (latitude, longitude)
+    mins_driven: float = 0.0  # Total minutes driven
+    continuous_driving_minutes: float = 0.0  # Minutes driven since last break
+    breaks_taken_min: float = 0.0  # Total minutes spent on breaks
 
 
-class DriverSwap(BaseModel):
-    """Driver swap event"""
+class DetailedDriverBreak(BaseModel):
+    """Model representing a detailed driver break"""
+    break_number: int
+    break_type: DriverBreakType
     location: Tuple[float, float]
-    time: float  # seconds from start
-    from_driver_id: Optional[str] = None
-    to_driver_id: Optional[str] = None
-    reason: Optional[str] = None
+    start_time_minutes: float  # Minutes from start of journey
+    duration_minutes: float
+    reason: str
+    charging_station: Optional[ChargingStation] = None
 
 
 class ChargingStop(BaseModel):
@@ -83,9 +86,8 @@ class RouteResult(BaseModel):
     total_energy_consumption: float  # in kWh
     total_cost: float  # in EUR
     route_segments: List[RouteSegment]
-    driver_breaks: List[DriverBreak]
+    driver_breaks: List[DetailedDriverBreak]
     charging_stops: List[ChargingStop]
-    driver_swaps: List[DriverSwap] = []
     nearby_charging_stations: List[ChargingStation] = []
     battery_capacity_kwh: Optional[float] = None
     battery_trace: List[Dict] = []  # items: {"location": (lat,lon), "time": s, "battery_kwh": float, "soc_percent": float}
@@ -102,13 +104,6 @@ class RouteRequest(BaseModel):
     num_drivers: Optional[int] = Field(default=1, description="Number of available drivers for swapping")
     driver_ids: Optional[List[str]] = None
 
-class Driver(BaseModel):
-    """Model representing a truck driver"""
-    id: int
-    name: str
-    home_location: Tuple[float, float]  # (latitude, longitude)
-    current_truck_id: Optional[int] = None
-    current_location: Optional[Tuple[float, float]] = None
 
 class SingleRouteRequest(BaseModel):
     start_lat: float
@@ -117,7 +112,11 @@ class SingleRouteRequest(BaseModel):
     end_lng: float
     route_name: Optional[str] = None
 
+<<<<<<< HEAD
+
+=======
 # NEW: Enhanced models for detailed route information
+>>>>>>> 2f65e84304f1cfc4b6d7e5b00c99d324d9fa4ea8
 class DetailedRouteSegment(BaseModel):
     """Model representing a detailed route segment with costs"""
     segment_number: int
@@ -128,6 +127,11 @@ class DetailedRouteSegment(BaseModel):
     energy_consumption_kwh: float
     coordinates: List[Dict[str, float]]  # Route coordinates for this segment
     costs: Dict[str, float]  # Cost breakdown for this segment
+<<<<<<< HEAD
+    driver_id: Optional[str] = None  # Driver who drove this segment
+
+=======
+>>>>>>> 2f65e84304f1cfc4b6d7e5b00c99d324d9fa4ea8
 
 class DetailedChargingStop(BaseModel):
     """Model representing a detailed charging stop"""
@@ -139,15 +143,26 @@ class DetailedChargingStop(BaseModel):
     charging_cost_eur: float
     departure_battery_kwh: float
 
+<<<<<<< HEAD
+
+class RouteCosts(BaseModel):
+    """Model representing total route costs"""
+    driver_cost_eur: float
+=======
 class RouteCosts(BaseModel):
     """Model representing total route costs"""
     driver_cost_eur: float
     energy_cost_eur: float
+>>>>>>> 2f65e84304f1cfc4b6d7e5b00c99d324d9fa4ea8
     depreciation_cost_eur: float
     tolls_cost_eur: float
     charging_cost_eur: float
     total_cost_eur: float
 
+<<<<<<< HEAD
+
+=======
+>>>>>>> 2f65e84304f1cfc4b6d7e5b00c99d324d9fa4ea8
 class SingleRouteResponse(BaseModel):
     distance_km: float
     route_name: str
@@ -155,8 +170,13 @@ class SingleRouteResponse(BaseModel):
     coordinates: List[Dict[str, float]]
     success: bool
     message: Optional[str] = None
+<<<<<<< HEAD
+
+
+=======
     
     
+>>>>>>> 2f65e84304f1cfc4b6d7e5b00c99d324d9fa4ea8
 class SingleRouteWithSegments(BaseModel):
     distance_km: float
     route_name: str
@@ -166,7 +186,18 @@ class SingleRouteWithSegments(BaseModel):
     # NEW: Enhanced fields
     route_segments: List[DetailedRouteSegment] = []
     charging_stops: List[DetailedChargingStop] = []
+<<<<<<< HEAD
+    driver_breaks: List[DetailedDriverBreak] = []
+    driver: Optional[Driver] = None  # Single driver object
     total_costs: Optional[RouteCosts] = None
     truck_model: Optional[str] = None
     starting_battery_kwh: Optional[float] = None
     final_battery_kwh: Optional[float] = None
+    eu_compliant: bool = True  # NEW: EU compliance flag
+
+=======
+    total_costs: Optional[RouteCosts] = None
+    truck_model: Optional[str] = None
+    starting_battery_kwh: Optional[float] = None
+    final_battery_kwh: Optional[float] = None
+>>>>>>> 2f65e84304f1cfc4b6d7e5b00c99d324d9fa4ea8
