@@ -238,8 +238,11 @@ async def calculate_costs(request: SingleRouteRequest, truck_model: str = None, 
         
         # Call the enhanced route planner
         result = plan_route(request, truck_model, starting_battery_kwh)
+<<<<<<< HEAD
 
         print(result)
+=======
+>>>>>>> 2f65e84304f1cfc4b6d7e5b00c99d324d9fa4ea8
         
         if not result.success:
             raise HTTPException(status_code=400, detail=result.message)
