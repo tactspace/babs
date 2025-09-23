@@ -3,12 +3,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, List, Tuple, Any
 import os
 import json
-from models import RouteRequest, RouteResult, Driver, SingleRouteRequest, SingleRouteResponse, SingleRouteWithSegments
+from models import RouteRequest, RouteResult, Driver, SingleRouteRequest, SingleRouteResponse, SingleRouteWithSegments, MultiRouteWithSegments
 from trucks import load_truck_specs
 from charging_stations import load_charging_stations
 from route_calculator import calculate_detailed_route, calculate_multi_route
 from optimizer import optimize_routes
 from optily import plan_route
+from optily_multiroute import calculate_multi_route_with_swaps
 
 app = FastAPI(title="E-Truck Routing Optimizer")
 
@@ -133,10 +134,6 @@ async def get_optimal_route(request: SingleRouteRequest):
 
 
 
-
-
-
-
 # Refactoring needed below
 @app.get("/trucks")
 async def get_trucks() -> Dict:
@@ -238,11 +235,6 @@ async def calculate_costs(request: SingleRouteRequest, truck_model: str = None, 
         
         # Call the enhanced route planner
         result = plan_route(request, truck_model, starting_battery_kwh)
-<<<<<<< HEAD
-
-        print(result)
-=======
->>>>>>> 2f65e84304f1cfc4b6d7e5b00c99d324d9fa4ea8
         
         if not result.success:
             raise HTTPException(status_code=400, detail=result.message)
@@ -253,6 +245,45 @@ async def calculate_costs(request: SingleRouteRequest, truck_model: str = None, 
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error calculating route costs: {str(e)}")
+
+
+@app.post("/compare-costs", response_model=MultiRouteWithSegments)
+async def compare_costs(route_requests: List[SingleRouteRequest], starting_battery_kwh: float = None):
+    """
+    Compare costs for multiple routes with and without driver swapping optimization.
+    
+    This endpoint:
+    1. Calculates individual routes using the existing plan_route function
+    2. Runs optimization to find beneficial driver swaps
+    3. Returns detailed comparison between base and optimized costs
+    
+    Args:
+        route_requests: List of SingleRouteRequest objects
+        starting_battery_kwh: Starting battery level (optional)
+        
+    Returns:
+        MultiRouteWithSegments with detailed cost comparisons and optimization results
+    """
+    try:
+        # Validate input
+        if not route_requests:
+            raise HTTPException(status_code=400, detail="At least one route request is required")
+        
+        if len(route_requests) < 2:
+            raise HTTPException(status_code=400, detail="At least two routes are required for comparison")
+        
+        # Call the multi-route optimization function
+        result = calculate_multi_route_with_swaps(route_requests, starting_battery_kwh)
+        
+        if not result.success:
+            raise HTTPException(status_code=400, detail=result.message)
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error comparing route costs: {str(e)}")
 
 
 @app.get("/health")

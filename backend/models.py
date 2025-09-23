@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional, Tuple, Dict
+from typing import List, Optional, Tuple, Dict, Any
 from enum import Enum
 
 
@@ -55,6 +55,7 @@ class Driver(BaseModel):
     mins_driven: float = 0.0  # Total minutes driven
     continuous_driving_minutes: float = 0.0  # Minutes driven since last break
     breaks_taken_min: float = 0.0  # Total minutes spent on breaks
+    current_truck_id: Optional[int] = None  # ID of the truck currently assigned to this driver
 
 
 class DetailedDriverBreak(BaseModel):
@@ -169,4 +170,51 @@ class SingleRouteWithSegments(BaseModel):
     starting_battery_kwh: Optional[float] = None
     final_battery_kwh: Optional[float] = None
     eu_compliant: bool = True  # NEW: EU compliance flag
+
+
+class TruckSwap(BaseModel):
+    """Model representing a truck swap between drivers"""
+    station_id: int
+    station_location: Tuple[float, float]
+    driver1_id: str
+    driver2_id: str
+    benefit_km: float
+    alignment_dot: float
+    reason: str
+    detour_km_total: float
+    iteration: int
+    route_idx: int
+    global_iteration: int
+
+
+class RouteComparison(BaseModel):
+    """Model representing comparison between base and optimized route"""
+    route_name: str
+    route_index: int
+    base: Dict[str, float]  # base cost, duration, distance, etc.
+    optimized: Dict[str, float]  # optimized cost, duration, distance, etc.
+    savings: Dict[str, float]  # savings in cost, duration, etc.
+    savings_percentage: Dict[str, float]  # percentage savings
+    swaps_applied: List[TruckSwap] = []  # swaps that affected this route
+
+class MultiRouteWithSegments(BaseModel):
+    """Model representing multiple routes with optimization and swapping"""
+    routes: List[SingleRouteWithSegments]
+    total_distance_km: float
+    total_duration_minutes: float
+    total_cost_eur: float
+    total_charging_cost_eur: float
+    success: bool
+    message: Optional[str] = None
+    # Optimization results
+    driver_assignments: List[Dict[str, Any]] = []
+    truck_swaps: List[TruckSwap] = []
+    drivers: List[Driver] = []
+    optimization_summary: Optional[Dict[str, Any]] = None
+    # Cost comparison
+    base_cost_eur: Optional[float] = None
+    optimized_cost_eur: Optional[float] = None
+    cost_savings_eur: Optional[float] = None
+    cost_savings_percentage: Optional[float] = None
+    route_comparisons: List[RouteComparison] = []
 
