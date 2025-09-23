@@ -1,7 +1,7 @@
 "use client";
 
 import { Route } from "./DemoPage";
-import { Eye, EyeOff, Loader2, ChevronDown, ChevronRight, Zap, Clock, DollarSign, MapPin } from "lucide-react";
+import { Eye, EyeOff, Loader2, ChevronDown, ChevronRight, Zap, Clock, DollarSign, MapPin, Coffee, Moon, AlertCircle } from "lucide-react";
 import { useState } from "react";
 
 interface RoutesListProps {
@@ -49,6 +49,37 @@ export default function RoutesList({
     const hours = Math.floor(minutes / 60);
     const mins = Math.round(minutes % 60);
     return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+  };
+
+  const formatBreakDuration = (minutes: number) => {
+    const hours = Math.floor(minutes / 60);
+    const mins = Math.round(minutes % 60);
+    if (hours > 0) {
+      return `${hours}h ${mins}m`;
+    }
+    return `${mins}m`;
+  };
+
+  const getBreakIcon = (breakType: string) => {
+    switch (breakType) {
+      case 'short_break':
+        return <Coffee className="w-3 h-3" />;
+      case 'long_rest':
+        return <Moon className="w-3 h-3" />;
+      default:
+        return <AlertCircle className="w-3 h-3" />;
+    }
+  };
+
+  const getBreakColor = (breakType: string) => {
+    switch (breakType) {
+      case 'short_break':
+        return 'bg-orange-50 border-orange-200 text-orange-800';
+      case 'long_rest':
+        return 'bg-purple-50 border-purple-200 text-purple-800';
+      default:
+        return 'bg-gray-50 border-gray-200 text-gray-800';
+    }
   };
 
   return (
@@ -144,6 +175,12 @@ export default function RoutesList({
                               <span>{route.routeData.charging_stops.length} stops</span>
                             </div>
                           )}
+                          {route.routeData?.driver_breaks && route.routeData.driver_breaks.length > 0 && (
+                            <div className="flex items-center gap-1">
+                              <Coffee className="w-3 h-3" />
+                              <span>{route.routeData.driver_breaks.length} breaks</span>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -187,6 +224,22 @@ export default function RoutesList({
                 {isExpanded && hasRouteData && (
                   <div className="px-4 pb-4 border-t border-gray-200 bg-white/50">
                     <div className="pt-3 space-y-3">
+                      {/* EU Compliance Status */}
+                      <div className="flex items-center gap-2 text-sm">
+                        <div className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          route.routeData?.eu_compliant 
+                            ? 'bg-green-100 text-green-800' 
+                            : 'bg-red-100 text-red-800'
+                        }`}>
+                          {route.routeData?.eu_compliant ? 'EU Compliant' : 'Non-Compliant'}
+                        </div>
+                        {route.routeData?.driver && (
+                          <div className="text-xs text-gray-600">
+                            Driver: {route.routeData.driver.name || route.routeData.driver.id}
+                          </div>
+                        )}
+                      </div>
+
                       {/* Truck Info */}
                       <div className="text-sm">
                         <div className="font-medium text-gray-700 mb-1">Truck Model</div>
@@ -195,6 +248,27 @@ export default function RoutesList({
                           Battery: {route.routeData?.starting_battery_kwh.toFixed(0)}kWh → {route.routeData?.final_battery_kwh.toFixed(0)}kWh
                         </div>
                       </div>
+
+                      {/* Driver Information */}
+                      {route.routeData?.driver && (
+                        <div className="text-sm">
+                          <div className="font-medium text-gray-700 mb-1">Driver Status</div>
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div className="flex justify-between">
+                              <span>Total Driving:</span>
+                              <span>{formatDuration(route.routeData.driver.mins_driven)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Continuous:</span>
+                              <span>{formatDuration(route.routeData.driver.continuous_driving_minutes)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Break Time:</span>
+                              <span>{formatDuration(route.routeData.driver.breaks_taken_min)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Cost Breakdown */}
                       <div className="text-sm">
@@ -223,6 +297,35 @@ export default function RoutesList({
                         </div>
                       </div>
 
+                      {/* Driver Breaks */}
+                      {route.routeData?.driver_breaks && route.routeData.driver_breaks.length > 0 && (
+                        <div className="text-sm">
+                          <div className="font-medium text-gray-700 mb-2">Driver Breaks</div>
+                          <div className="space-y-2">
+                            {route.routeData.driver_breaks.map((breakItem, index) => (
+                              <div key={index} className={`p-2 rounded border text-xs ${getBreakColor(breakItem.break_type)}`}>
+                                <div className="flex items-center gap-2 mb-1">
+                                  {getBreakIcon(breakItem.break_type)}
+                                  <span className="font-medium capitalize">
+                                    {breakItem.break_type.replace('_', ' ')} #{breakItem.break_number}
+                                  </span>
+                                </div>
+                                <div className="text-gray-600 mb-1">{breakItem.reason}</div>
+                                <div className="flex justify-between items-center">
+                                  <span>Duration: {formatBreakDuration(breakItem.duration_minutes)}</span>
+                                  <span>Start: {formatDuration(breakItem.start_time_minutes)}</span>
+                                </div>
+                                {breakItem.charging_station && (
+                                  <div className="mt-1 text-xs opacity-75">
+                                    At: {breakItem.charging_station.operator_name}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Route Segments */}
                       {route.routeData?.route_segments && route.routeData.route_segments.length > 0 && (
                         <div className="text-sm">
@@ -236,6 +339,11 @@ export default function RoutesList({
                                   <span>{formatDuration(segment.duration_minutes)}</span>
                                   <span>{formatCurrency(segment.costs.total_cost_eur)}</span>
                                 </div>
+                                {segment.driver_id && (
+                                  <div className="text-xs text-gray-500 mt-1">
+                                    Driver: {segment.driver_id}
+                                  </div>
+                                )}
                               </div>
                             ))}
                           </div>
@@ -254,6 +362,9 @@ export default function RoutesList({
                                 <div className="flex justify-between mt-1">
                                   <span>{stop.charging_time_hours.toFixed(1)}h</span>
                                   <span>{formatCurrency(stop.charging_cost_eur)}</span>
+                                </div>
+                                <div className="text-xs text-gray-500 mt-1">
+                                  Battery: {stop.arrival_battery_kwh.toFixed(0)}kWh → {stop.departure_battery_kwh.toFixed(0)}kWh
                                 </div>
                               </div>
                             ))}
