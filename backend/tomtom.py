@@ -24,6 +24,8 @@ def get_route(start_point, end_point, vehicle_type="truck", route_type: str = "f
     # Format coordinates for API request
     start_coord = f"{start_point[0]},{start_point[1]}"
     end_coord = f"{end_point[0]},{end_point[1]}"
+    import time 
+    time.sleep(0.5)
     
     # Build API URL
     base_url = "https://api.tomtom.com/routing/1/calculateRoute"
