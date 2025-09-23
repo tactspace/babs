@@ -205,12 +205,12 @@ export default function RoutesList({
                             <span>{formatCurrency(route.routeData?.total_costs.driver_cost_eur || 0)}</span>
                           </div>
                           <div className="flex justify-between">
-                            <span>Energy:</span>
-                            <span>{formatCurrency(route.routeData?.total_costs.energy_cost_eur || 0)}</span>
-                          </div>
-                          <div className="flex justify-between">
                             <span>Depreciation:</span>
                             <span>{formatCurrency(route.routeData?.total_costs.depreciation_cost_eur || 0)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Tolls:</span>
+                            <span>{formatCurrency(route.routeData?.total_costs.tolls_cost_eur || 0)}</span>
                           </div>
                           <div className="flex justify-between">
                             <span>Charging:</span>

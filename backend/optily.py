@@ -65,7 +65,6 @@ def _plan_simplified_route(request: SingleRouteRequest, truck: TruckModel, charg
     detailed_charging_stops = []
     total_costs = {
         "driver_cost": 0,
-        "energy_cost": 0,
         "depreciation_cost": 0,
         "tolls_cost": 0,
         "charging_cost": 0
@@ -75,7 +74,7 @@ def _plan_simplified_route(request: SingleRouteRequest, truck: TruckModel, charg
     current_position = (request.start_lat, request.start_lng)
     destination = (request.end_lat, request.end_lng)
     
-    # NEW: First check if destination is reachable directly with 80% battery
+    # First check if destination is reachable directly with 80% battery
     direct_distance = _get_route_distance(current_position, destination)
     if direct_distance > 0:
         energy_needed = calculate_energy_consumption(direct_distance, truck)
@@ -111,7 +110,6 @@ def _plan_simplified_route(request: SingleRouteRequest, truck: TruckModel, charg
                 # Create route costs object
                 route_costs = RouteCosts(
                     driver_cost_eur=total_costs["driver_cost"],
-                    energy_cost_eur=total_costs["energy_cost"],
                     depreciation_cost_eur=total_costs["depreciation_cost"],
                     tolls_cost_eur=total_costs["tolls_cost"],
                     charging_cost_eur=total_costs["charging_cost"],
@@ -283,7 +281,6 @@ def _plan_simplified_route(request: SingleRouteRequest, truck: TruckModel, charg
     # Create route costs object
     route_costs = RouteCosts(
         driver_cost_eur=total_costs["driver_cost"],
-        energy_cost_eur=total_costs["energy_cost"],
         depreciation_cost_eur=total_costs["depreciation_cost"],
         tolls_cost_eur=total_costs["tolls_cost"],
         charging_cost_eur=total_costs["charging_cost"],
@@ -558,16 +555,13 @@ def _add_segment_costs(segment: Dict, total_costs: Dict[str, float]):
     """Add segment costs to total costs"""
     duration_hours = segment["duration_minutes"] / 60
     distance_km = segment["distance_km"]
-    energy_consumption = segment["energy_consumption"]
     
     # Cost parameters
     DRIVER_HOURLY_PAY = 35.0
-    ENERGY_COST_PER_KWH = 0.39
     DEPRECIATION_PER_KM = 0.05
     TOLLS_PER_KM = 0.00
     
     total_costs["driver_cost"] += DRIVER_HOURLY_PAY * duration_hours
-    total_costs["energy_cost"] += ENERGY_COST_PER_KWH * energy_consumption
     total_costs["depreciation_cost"] += DEPRECIATION_PER_KM * distance_km
     total_costs["tolls_cost"] += TOLLS_PER_KM * distance_km
 
@@ -576,25 +570,21 @@ def _calculate_segment_costs_dict(segment: Dict) -> Dict[str, float]:
     """Calculate costs for a single segment and return as dictionary"""
     duration_hours = segment["duration_minutes"] / 60
     distance_km = segment["distance_km"]
-    energy_consumption = segment["energy_consumption"]
     
     # Cost parameters
     DRIVER_HOURLY_PAY = 35.0
-    ENERGY_COST_PER_KWH = 0.39
     DEPRECIATION_PER_KM = 0.05
     TOLLS_PER_KM = 0.00
     
     driver_cost = DRIVER_HOURLY_PAY * duration_hours
-    energy_cost = ENERGY_COST_PER_KWH * energy_consumption
     depreciation_cost = DEPRECIATION_PER_KM * distance_km
     tolls_cost = TOLLS_PER_KM * distance_km
     
     return {
         "driver_cost_eur": driver_cost,
-        "energy_cost_eur": energy_cost,
         "depreciation_cost_eur": depreciation_cost,
         "tolls_cost_eur": tolls_cost,
-        "total_cost_eur": driver_cost + energy_cost + depreciation_cost + tolls_cost
+        "total_cost_eur": driver_cost + depreciation_cost + tolls_cost
     }
 
 
@@ -627,7 +617,6 @@ def _create_simplified_success_message(truck: TruckModel, route_segments: List[D
     # Add cost breakdown
     message += f"\nCost breakdown:\n"
     message += f"Driver: €{total_costs['driver_cost']:.2f}\n"
-    message += f"Energy: €{total_costs['energy_cost']:.2f}\n"
     message += f"Depreciation: €{total_costs['depreciation_cost']:.2f}\n"
     message += f"Tolls: €{total_costs['tolls_cost']:.2f}\n"
     message += f"Charging: €{total_costs['charging_cost']:.2f}\n"
@@ -654,7 +643,6 @@ def _create_direct_route_success_message(truck: TruckModel, segment: Dict, total
     
     message += f"\nCost breakdown:\n"
     message += f"Driver: €{total_costs['driver_cost']:.2f}\n"
-    message += f"Energy: €{total_costs['energy_cost']:.2f}\n"
     message += f"Depreciation: €{total_costs['depreciation_cost']:.2f}\n"
     message += f"Tolls: €{total_costs['tolls_cost']:.2f}\n"
     message += f"Charging: €{total_costs['charging_cost']:.2f}\n"
@@ -670,29 +658,26 @@ def _calculate_route_costs(distance_km: float, duration_hours: float, energy_con
     Args:
         distance_km: Total distance in kilometers
         duration_hours: Total driving time in hours
-        energy_consumption_kwh: Total energy consumption in kWh
+        energy_consumption_kwh: Total energy consumption in kWh (kept for compatibility but not used in cost calculation)
         
     Returns:
         Dictionary with cost breakdown
     """
     # Cost parameters from detour_costs.csv
     DRIVER_HOURLY_PAY = 35.0  # €/h
-    ENERGY_COST_PER_KWH = 0.39  # €/kWh (average energy price for public charging)
     DEPRECIATION_PER_KM = 0.05  # €/km (vehicle variable cost)
     TOLLS_PER_KM = 0.00  # €/km (EV trucks exempt from tolls in EU)
     
     # Calculate individual cost components
     driver_cost = DRIVER_HOURLY_PAY * duration_hours
-    energy_cost = ENERGY_COST_PER_KWH * energy_consumption_kwh
     depreciation_cost = DEPRECIATION_PER_KM * distance_km
     tolls_cost = TOLLS_PER_KM * distance_km
     
-    # Calculate total cost
-    total_cost = driver_cost + energy_cost + depreciation_cost + tolls_cost
+    # Calculate total cost (energy cost removed to avoid double-counting with charging costs)
+    total_cost = driver_cost + depreciation_cost + tolls_cost
     
     return {
         "driver_cost": driver_cost,
-        "energy_cost": energy_cost,
         "depreciation_cost": depreciation_cost,
         "tolls_cost": tolls_cost,
         "total_cost": total_cost,
@@ -730,12 +715,12 @@ if __name__ == "__main__":
         route_name="Frankfurt to Stuttgart"
     )
 
-    berlin_munich = SingleRouteRequest(
-        start_lat=52.52,
-        start_lng=13.405,
+    hamburg_munich = SingleRouteRequest(
+        start_lat=53.55,
+        start_lng=9.99,
         end_lat=48.14,
         end_lng=11.58,
-        route_name="Berlin to Munich"
+        route_name="Hamburg to Munich"
     )
     
     # Test with a specific truck model
@@ -744,7 +729,7 @@ if __name__ == "__main__":
         print(f"\nTesting with truck: {first_truck}")
         
         res = plan_route(
-            berlin_munich,
+            hamburg_munich,
             truck_model=first_truck,
             starting_battery_kwh=400
         )
@@ -754,11 +739,11 @@ if __name__ == "__main__":
             print("Error: cant go in one go")
 
 
-        print("*"*100)
-        res2 = plan_route(
-            frankfurt_stuttgart,
-            truck_model=first_truck,
-            starting_battery_kwh=400
-        )
-        if res2:
-            print(res2.message)
+        # print("*"*100)
+        # res2 = plan_route(
+        #     frankfurt_stuttgart,
+        #     truck_model=first_truck,
+        #     starting_battery_kwh=400
+        # )
+        # if res2:
+        #     print(res2.message)

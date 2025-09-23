@@ -11,7 +11,6 @@ export interface DetailedRouteSegment {
 }>;
   costs: {
     driver_cost_eur: number;
-    energy_cost_eur: number;
     depreciation_cost_eur: number;
     tolls_cost_eur: number;
     total_cost_eur: number;
@@ -39,7 +38,6 @@ export interface DetailedChargingStop {
 
 export interface RouteCosts {
   driver_cost_eur: number;
-  energy_cost_eur: number;
   depreciation_cost_eur: number;
   tolls_cost_eur: number;
   charging_cost_eur: number;

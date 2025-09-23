@@ -142,7 +142,6 @@ class DetailedChargingStop(BaseModel):
 class RouteCosts(BaseModel):
     """Model representing total route costs"""
     driver_cost_eur: float
-    energy_cost_eur: float
     depreciation_cost_eur: float
     tolls_cost_eur: float
     charging_cost_eur: float
