@@ -274,6 +274,8 @@ async def compare_costs(route_requests: List[SingleRouteRequest], starting_batte
         
         # Call the multi-route optimization function
         result = calculate_multi_route_with_swaps(route_requests, starting_battery_kwh)
+        with open(f"simple_routes.json", "w") as f:
+            f.write(f"Result:\n {result}")
         
         if not result.success:
             raise HTTPException(status_code=400, detail=result.message)
