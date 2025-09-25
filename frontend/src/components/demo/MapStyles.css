@@ -226,16 +226,3 @@
   width: 12px;
   height: 12px;
 }
-
-.truck-swap-marker {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
-  transition: all 0.2s ease;
-}
-
-.truck-swap-marker:hover {
-  transform: scale(1.1);
-  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.4));
-}

@@ -8,21 +8,9 @@ interface CoordinateFormProps {
   onFindRoute?: () => void; // Simplified - no parameters needed
   isFindRouteEnabled?: boolean; // Add enabled state
   isFindingRoutes?: boolean; // Add loading state
-  onOptimizeWithSwaps?: () => void; // NEW: Add optimize with swaps callback
-  isOptimizeEnabled?: boolean; // NEW: Add enabled state for optimize button
-  isOptimizing?: boolean; // NEW: Add loading state for optimize button
 }
 
-export default function CoordinateForm({ 
-  onSubmit, 
-  onImportCSV, 
-  onFindRoute, 
-  isFindRouteEnabled, 
-  isFindingRoutes,
-  onOptimizeWithSwaps,
-  isOptimizeEnabled,
-  isOptimizing
-}: CoordinateFormProps) {
+export default function CoordinateForm({ onSubmit, onImportCSV, onFindRoute, isFindRouteEnabled, isFindingRoutes }: CoordinateFormProps) {
   const [startLatitude, setStartLatitude] = useState("");
   const [startLongitude, setStartLongitude] = useState("");
   const [endLatitude, setEndLatitude] = useState("");
@@ -166,13 +154,6 @@ export default function CoordinateForm({
     }
   };
 
-  // NEW: Handle optimize with swaps
-  const handleOptimizeWithSwaps = () => {
-    if (onOptimizeWithSwaps) {
-      onOptimizeWithSwaps();
-    }
-  };
-
   return (
     <div className="bg-white rounded-lg p-4">
       <h2 className="text-xl font-bold mb-4">Add New Route</h2>
@@ -289,16 +270,6 @@ export default function CoordinateForm({
             className="flex-1 inline-flex justify-center items-center rounded-md bg-primary text-white hover:bg-primary/90 h-10 px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isFindingRoutes ? "Finding Routes..." : "Find Routes"}
-          </button>
-
-          {/* NEW: Optimize with swaps button */}
-          <button
-            type="button"
-            onClick={handleOptimizeWithSwaps}
-            disabled={!isOptimizeEnabled}
-            className="flex-1 inline-flex justify-center items-center rounded-md bg-green-600 text-white hover:bg-green-700 h-10 px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isOptimizing ? "Optimizing..." : "Optimize"}
           </button>
         </div>
         
