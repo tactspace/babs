@@ -7,27 +7,12 @@ import { createCustomMarker, COLORS, activeHighlightMarker } from "./LocationMar
 import L from "leaflet";
 import { Route } from "./DemoPage";
 import { ChargingStation } from "../../types/chargingStation";
-import { ArrowUpDown } from "lucide-react";
-
-// NEW: Add interfaces for optimized routes and swaps
-interface TruckSwap {
-  station_id: number;
-  station_location: [number, number];
-  driver1_id: string;
-  driver2_id: string;
-  benefit_km: number;
-  reason: string;
-}
 
 interface MapViewProps {
   routes: Route[];
   activeRouteId: string;
   showChargingStations: boolean;
   chargingStations: ChargingStation[];
-  // NEW: Add optional props for optimized routes and swaps
-  optimizedRoutes?: Route[];
-  truckSwaps?: TruckSwap[];
-  showOptimizedRoutes?: boolean;
 }
 
 // Create charging station icon
@@ -63,49 +48,11 @@ const createChargingStopIcon = () => {
   });
 };
 
-// NEW: Create truck swap icon using Lucide React
-const createTruckSwapIcon = () => {
-  return L.divIcon({
-    html: `
-      <div class="truck-swap-marker">
-        <div style="
-          background-color: #f97316;
-          border: 2px solid #ea580c;
-          border-radius: 50%;
-          width: 32px;
-          height: 32px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: white;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-        ">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="m21 16-4 4-4-4"/>
-            <path d="M17 20V4"/>
-            <path d="m3 8 4-4 4 4"/>
-            <path d="M7 4v16"/>
-          </svg>
-        </div>
-      </div>
-    `,
-    className: 'custom-truck-swap-icon',
-    iconSize: [32, 32],
-    iconAnchor: [16, 16],
-  });
-};
-
 // Component to fit bounds when route points change
-function BoundsAdjuster({ 
-  routes, 
-  chargingStations, 
-  showChargingStations,
-  truckSwaps 
-}: { 
+function BoundsAdjuster({ routes, chargingStations, showChargingStations }: { 
   routes: Route[]; 
   chargingStations: ChargingStation[];
   showChargingStations: boolean;
-  truckSwaps?: TruckSwap[];
 }) {
   const map = useMap();
   
@@ -132,13 +79,6 @@ function BoundsAdjuster({
       });
     }
     
-    // NEW: Add truck swaps to bounds
-    if (truckSwaps && truckSwaps.length > 0) {
-      truckSwaps.forEach(swap => {
-        bounds.extend([swap.station_location[0], swap.station_location[1]]);
-      });
-    }
-    
     if (bounds.isValid()) {
       // Apply padding to ensure all points are visible with some margin
       map.fitBounds(bounds, {
@@ -146,7 +86,7 @@ function BoundsAdjuster({
         maxZoom: 13        // Limit zoom level to avoid excessive zoom on close points
       });
     }
-  }, [map, routes, chargingStations, showChargingStations, truckSwaps]);
+  }, [map, routes, chargingStations, showChargingStations]);
   
   return null;
 }
@@ -169,15 +109,7 @@ function getSegmentColor(baseColor: string, segmentIndex: number): string {
   return colors[segmentIndex % colors.length];
 }
 
-export default function MapView({ 
-  routes, 
-  activeRouteId, 
-  showChargingStations, 
-  chargingStations,
-  optimizedRoutes,
-  truckSwaps,
-  showOptimizedRoutes = false
-}: MapViewProps) {
+export default function MapView({ routes, activeRouteId, showChargingStations, chargingStations }: MapViewProps) {
   const [isMounted, setIsMounted] = useState(false);
   
   useEffect(() => {
@@ -218,15 +150,12 @@ export default function MapView({
     }).format(amount);
   };
 
-  // Decide which routes to display - prioritize optimized routes if available and should be shown
-  const displayRoutes = (showOptimizedRoutes && optimizedRoutes) ? optimizedRoutes : routes;
-
   return (
     <MapContainer 
       center={[centerLat, centerLng]} 
       zoom={zoom} 
       style={{ height: "100%", width: "100%" }}
-      key={`map-${routes.map(r => r.id).join('-')}-${activeRouteId}-${showChargingStations}-${showOptimizedRoutes}`}
+      key={`map-${routes.map(r => r.id).join('-')}-${activeRouteId}-${showChargingStations}`}
     >
       <TileLayer
         attribution='&copy; <a href="https://www.optily.eu">optily.eu</a>'
@@ -234,7 +163,7 @@ export default function MapView({
       />
       
       {/* Render Routes */}
-      {displayRoutes.map((route, index) => {
+      {routes.map((route, index) => {
         const isActive = route.id === activeRouteId;
         const routeColor = getRouteColor(index);
         const customStartMarker = isActive ? activeHighlightMarker(routeColor) : createCustomMarker(routeColor);
@@ -365,31 +294,6 @@ export default function MapView({
         );
       })}
       
-      {/* NEW: Render Truck Swap Markers */}
-      {truckSwaps && truckSwaps.map((swap, swapIndex) => (
-        <Marker
-          key={`truck-swap-${swapIndex}`}
-          position={[swap.station_location[0], swap.station_location[1]]}
-          icon={createTruckSwapIcon()}
-          zIndexOffset={1200}
-        >
-          <Popup>
-            <div className="font-medium p-2 min-w-[250px]">
-              <div className="font-bold mb-2 text-lg text-orange-600">Driver Swap Location</div>
-              <div className="space-y-1 text-sm">
-                <div><strong>Station ID:</strong> {swap.station_id}</div>
-                <div><strong>Drivers:</strong> {swap.driver1_id} ↔ {swap.driver2_id}</div>
-                <div><strong>Benefit:</strong> {swap.benefit_km.toFixed(1)} km saved</div>
-                <div><strong>Reason:</strong> {swap.reason}</div>
-                <div className="mt-2 pt-2 border-t text-xs text-gray-600">
-                  Coordinates: {swap.station_location[0].toFixed(5)}, {swap.station_location[1].toFixed(5)}
-                </div>
-              </div>
-            </div>
-          </Popup>
-        </Marker>
-      ))}
-      
       {/* Render General Charging Stations */}
       {showChargingStations && chargingStations.map((station) => (
         <Marker
@@ -427,10 +331,9 @@ export default function MapView({
       ))}
       
       <BoundsAdjuster 
-        routes={displayRoutes} 
+        routes={routes} 
         chargingStations={chargingStations}
         showChargingStations={showChargingStations}
-        truckSwaps={truckSwaps}
       />
     </MapContainer>
   );
