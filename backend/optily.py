@@ -277,7 +277,7 @@ def _plan_eu_compliant_route(request: SingleRouteRequest, truck: TruckModel, cha
                     break_type=DriverBreakType.SHORT_BREAK,
                     location=station_position,
                     start_time_minutes=total_journey_time_minutes,
-                    duration_minutes=charging_stop["charging_time_hours"] * 60,
+                    duration_minutes=max(charging_stop["charging_time_hours"] * 60, 45),
                     reason=f"Charging break at {best_station.operator_name}",
                     charging_station=best_station
                 )
@@ -320,6 +320,8 @@ def _plan_eu_compliant_route(request: SingleRouteRequest, truck: TruckModel, cha
         predicted_distance = _get_route_distance(current_position, station_position)
         predicted_duration_hours = predicted_distance / 70.0
         predicted_duration_minutes = predicted_duration_hours * 60
+
+        print(f"PRED DURATION: {predicted_duration_minutes:.1f} minutes, break needed? {driver.continuous_driving_minutes + predicted_duration_minutes > MAX_CONTINUOUS_DRIVING_HOURS * 60}")
         
         # Step 7: Check EU compliance BEFORE creating segment
         # CORRECTED: Use continuous_driving_minutes directly
@@ -337,7 +339,7 @@ def _plan_eu_compliant_route(request: SingleRouteRequest, truck: TruckModel, cha
                 break_type=DriverBreakType.SHORT_BREAK,
                 location=break_location["location"],
                 start_time_minutes=total_journey_time_minutes,
-                duration_minutes=SHORT_BREAK_DURATION_HOURS * 60,  # Convert to minutes
+                duration_minutes=max(SHORT_BREAK_DURATION_HOURS * 60, 45),  # Convert to minutes
                 reason=f"Mandatory 45-minute break after {driver.continuous_driving_minutes:.1f} minutes continuous driving",
                 charging_station=break_location.get("station")
             )
@@ -358,6 +360,7 @@ def _plan_eu_compliant_route(request: SingleRouteRequest, truck: TruckModel, cha
         if (daily_driving_minutes + predicted_duration_minutes) > (MAX_DAILY_DRIVING_HOURS * 60):
             # Need 11-hour mandatory rest for multi-day planning
             break_count += 1
+            break_location = _find_break_location(current_position, charging_stations)
             # Create 11-hour mandatory rest
             mandatory_rest = DetailedDriverBreak(
                 break_number=break_count,
@@ -366,7 +369,7 @@ def _plan_eu_compliant_route(request: SingleRouteRequest, truck: TruckModel, cha
                 start_time_minutes=total_journey_time_minutes,
                 duration_minutes=LONG_REST_DURATION_HOURS * 60,  # Convert to minutes
                 reason=f"Mandatory 11-hour rest after {daily_driving_minutes:.1f} minutes daily driving (multi-day planning)",
-                charging_station=None
+                charging_station=break_location.get("station")
             )
             driver_breaks.append(mandatory_rest)
             
@@ -481,7 +484,7 @@ def _plan_eu_compliant_route(request: SingleRouteRequest, truck: TruckModel, cha
     return SingleRouteWithSegments(
         distance_km=total_distance,
         route_name=request.route_name or f"{truck.manufacturer} {truck.model} Route",
-        duration_minutes=total_duration,
+        duration_minutes=total_journey_time_minutes,  # Use total_journey_time_minutes instead of total_duration
         success=True,
         message=message,
         route_segments=detailed_segments,

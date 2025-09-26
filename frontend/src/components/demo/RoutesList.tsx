@@ -1,7 +1,7 @@
 "use client";
 
 import { Route } from "./DemoPage";
-import { Eye, EyeOff, Loader2, ChevronDown, ChevronRight, Zap, Clock, DollarSign, MapPin, Coffee, Moon, AlertCircle } from "lucide-react";
+import { Eye, EyeOff, Loader2, ChevronDown, ChevronRight, Zap, Clock, DollarSign, MapPin, Coffee, Moon, AlertCircle, Battery, MapPinIcon, Timer, Euro, Route as RouteIcon, User, Gauge } from "lucide-react";
 import { useState } from "react";
 
 interface RoutesListProps {
@@ -26,6 +26,8 @@ export default function RoutesList({
   loadingChargingStations
 }: RoutesListProps) {
   const [expandedRoutes, setExpandedRoutes] = useState<Set<string>>(new Set());
+  const [expandedChargingStops, setExpandedChargingStops] = useState<Set<string>>(new Set());
+  const [expandedDriverBreaks, setExpandedDriverBreaks] = useState<Set<string>>(new Set());
 
   const toggleExpanded = (routeId: string) => {
     const newExpanded = new Set(expandedRoutes);
@@ -35,6 +37,26 @@ export default function RoutesList({
       newExpanded.add(routeId);
     }
     setExpandedRoutes(newExpanded);
+  };
+
+  const toggleChargingStops = (routeId: string) => {
+    const newExpanded = new Set(expandedChargingStops);
+    if (newExpanded.has(routeId)) {
+      newExpanded.delete(routeId);
+    } else {
+      newExpanded.add(routeId);
+    }
+    setExpandedChargingStops(newExpanded);
+  };
+
+  const toggleDriverBreaks = (routeId: string) => {
+    const newExpanded = new Set(expandedDriverBreaks);
+    if (newExpanded.has(routeId)) {
+      newExpanded.delete(routeId);
+    } else {
+      newExpanded.add(routeId);
+    }
+    setExpandedDriverBreaks(newExpanded);
   };
 
   const formatCurrency = (amount: number) => {
@@ -63,11 +85,11 @@ export default function RoutesList({
   const getBreakIcon = (breakType: string) => {
     switch (breakType) {
       case 'short_break':
-        return <Coffee className="w-3 h-3" />;
+        return <Coffee className="w-4 h-4" />;
       case 'long_rest':
-        return <Moon className="w-3 h-3" />;
+        return <Moon className="w-4 h-4" />;
       default:
-        return <AlertCircle className="w-3 h-3" />;
+        return <AlertCircle className="w-4 h-4" />;
     }
   };
 
@@ -83,7 +105,7 @@ export default function RoutesList({
   };
 
   return (
-    <div className="flex-1 px-10 pb-12 overflow-hidden">
+    <div className="flex-1 px-10 pb-12">
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-lg font-bold">Routes</h2>
         <div className="flex items-center gap-3">
@@ -119,7 +141,7 @@ export default function RoutesList({
         </div>
       </div>
       
-      <div className="space-y-3 overflow-y-auto h-full pb-4">
+      <div className="space-y-3 pb-4">
         {routes.length === 0 ? (
           <div className="text-center py-8 text-gray-500">
             <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -132,6 +154,8 @@ export default function RoutesList({
           routes.map(route => {
             const isExpanded = expandedRoutes.has(route.id);
             const hasRouteData = route.routeData && route.routeData.success;
+            const isChargingStopsExpanded = expandedChargingStops.has(route.id);
+            const isDriverBreaksExpanded = expandedDriverBreaks.has(route.id);
             
             return (
               <div 
@@ -223,7 +247,7 @@ export default function RoutesList({
                 {/* Expanded Details */}
                 {isExpanded && hasRouteData && (
                   <div className="px-4 pb-4 border-t border-gray-200 bg-white/50">
-                    <div className="pt-3 space-y-3">
+                    <div className="pt-3 space-y-4">
                       {/* EU Compliance Status */}
                       <div className="flex items-center gap-2 text-sm">
                         <div className={`px-2 py-1 rounded-full text-xs font-medium ${
@@ -255,12 +279,8 @@ export default function RoutesList({
                           <div className="font-medium text-gray-700 mb-1">Driver Status</div>
                           <div className="grid grid-cols-2 gap-2 text-xs">
                             <div className="flex justify-between">
-                              <span>Total Driving:</span>
+                              <span>Driving Time:</span>
                               <span>{formatDuration(route.routeData.driver.mins_driven)}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span>Continuous:</span>
-                              <span>{formatDuration(route.routeData.driver.continuous_driving_minutes)}</span>
                             </div>
                             <div className="flex justify-between">
                               <span>Break Time:</span>
@@ -297,78 +317,225 @@ export default function RoutesList({
                         </div>
                       </div>
 
-                      {/* Driver Breaks */}
-                      {route.routeData?.driver_breaks && route.routeData.driver_breaks.length > 0 && (
-                        <div className="text-sm">
-                          <div className="font-medium text-gray-700 mb-2">Driver Breaks</div>
-                          <div className="space-y-2">
-                            {route.routeData.driver_breaks.map((breakItem, index) => (
-                              <div key={index} className={`p-2 rounded border text-xs ${getBreakColor(breakItem.break_type)}`}>
-                                <div className="flex items-center gap-2 mb-1">
-                                  {getBreakIcon(breakItem.break_type)}
-                                  <span className="font-medium capitalize">
-                                    {breakItem.break_type.replace('_', ' ')} #{breakItem.break_number}
-                                  </span>
-                                </div>
-                                <div className="text-gray-600 mb-1">{breakItem.reason}</div>
-                                <div className="flex justify-between items-center">
-                                  <span>Duration: {formatBreakDuration(breakItem.duration_minutes)}</span>
-                                  <span>Start: {formatDuration(breakItem.start_time_minutes)}</span>
-                                </div>
-                                {breakItem.charging_station && (
-                                  <div className="mt-1 text-xs opacity-75">
-                                    At: {breakItem.charging_station.operator_name}
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Route Segments */}
+                      {/* Route Segments - Simplified */}
                       {route.routeData?.route_segments && route.routeData.route_segments.length > 0 && (
                         <div className="text-sm">
-                          <div className="font-medium text-gray-700 mb-2">Route Segments</div>
+                          <div className="font-medium text-gray-700 mb-3 flex items-center gap-2">
+                            <RouteIcon className="w-4 h-4 text-primary" />
+                            Route Segments ({route.routeData.route_segments.length})
+                          </div>
                           <div className="space-y-2">
-                            {route.routeData.route_segments.map((segment, index) => (
-                              <div key={index} className="bg-gray-50 p-2 rounded text-xs">
-                                <div className="font-medium">Segment {segment.segment_number}</div>
-                                <div className="flex justify-between mt-1">
-                                  <span>{segment.distance_km.toFixed(1)} km</span>
-                                  <span>{formatDuration(segment.duration_minutes)}</span>
-                                  <span>{formatCurrency(segment.costs.total_cost_eur)}</span>
-                                </div>
-                                {segment.driver_id && (
-                                  <div className="text-xs text-gray-500 mt-1">
-                                    Driver: {segment.driver_id}
+                            {route.routeData.route_segments.map((segment, index) => {
+                              const totalDistance = route.routeData?.distance_km || 0;
+                              const journeyPercentage = totalDistance > 0 ? (segment.distance_km / totalDistance) * 100 : 0;
+                              
+                              return (
+                                <div key={index} className="bg-primary/5 border border-primary/20 rounded-lg p-3">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-6 h-6 bg-primary text-white rounded-full flex items-center justify-center text-xs font-bold">
+                                        {segment.segment_number}
+                                      </div>
+                                      <div>
+                                        <div className="font-medium text-primary">Segment {segment.segment_number}</div>
+                                        <div className="text-xs text-primary/70">{journeyPercentage.toFixed(1)}% of journey</div>
+                                      </div>
+                                    </div>
+                                    <div className="text-right">
+                                      <div className="text-sm font-medium text-primary">{formatCurrency(segment.costs.total_cost_eur)}</div>
+                                      <div className="text-xs text-primary/70">{segment.distance_km.toFixed(1)} km</div>
+                                    </div>
                                   </div>
-                                )}
-                              </div>
-                            ))}
+                                  
+                                  <div className="flex items-center justify-between text-xs text-gray-600">
+                                    <div className="flex items-center gap-1">
+                                      <Clock className="w-3 h-3" />
+                                      <span>{formatDuration(segment.duration_minutes)}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <Gauge className="w-3 h-3" />
+                                      <span>{segment.energy_consumption_kwh.toFixed(1)}kWh</span>
+                                    </div>
+                                    {segment.driver_id && (
+                                      <div className="flex items-center gap-1">
+                                        <User className="w-3 h-3" />
+                                        <span>{segment.driver_id}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       )}
 
-                      {/* Charging Stops */}
+                      {/* Charging Stops - Collapsible */}
                       {route.routeData?.charging_stops && route.routeData.charging_stops.length > 0 && (
                         <div className="text-sm">
-                          <div className="font-medium text-gray-700 mb-2">Charging Stops</div>
-                          <div className="space-y-2">
-                            {route.routeData.charging_stops.map((stop, index) => (
-                              <div key={index} className="bg-blue-50 p-2 rounded text-xs">
-                                <div className="font-medium">{stop.charging_station.operator_name}</div>
-                                <div className="text-gray-600">{stop.charging_station.max_power_kW}kW</div>
-                                <div className="flex justify-between mt-1">
-                                  <span>{stop.charging_time_hours.toFixed(1)}h</span>
-                                  <span>{formatCurrency(stop.charging_cost_eur)}</span>
+                          <button
+                            onClick={() => toggleChargingStops(route.id)}
+                            className="flex items-center justify-between w-full text-left mb-3 hover:bg-gray-50 p-2 rounded-md transition-colors"
+                          >
+                            <div className="flex items-center gap-2">
+                              <Zap className="w-4 h-4 text-blue-600" />
+                              <span className="font-medium text-gray-700">Charging Stops ({route.routeData.charging_stops.length})</span>
+                            </div>
+                            {isChargingStopsExpanded ? (
+                              <ChevronDown className="w-4 h-4 text-gray-500" />
+                            ) : (
+                              <ChevronRight className="w-4 h-4 text-gray-500" />
+                            )}
+                          </button>
+                          
+                          {isChargingStopsExpanded && (
+                            <div className="space-y-3">
+                              {route.routeData.charging_stops.map((stop, index) => (
+                                <div key={index} className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                                  <div className="flex items-start justify-between mb-2">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                                        {stop.stop_number}
+                                      </div>
+                                      <div>
+                                        <div className="font-medium text-blue-900">{stop.charging_station.operator_name}</div>
+                                        <div className="text-xs text-blue-700">{stop.charging_station.country}</div>
+                                      </div>
+                                    </div>
+                                    <div className="text-right">
+                                      <div className="text-xs font-medium text-blue-900">{formatCurrency(stop.charging_cost_eur)}</div>
+                                      <div className="text-xs text-blue-700">{stop.charging_time_hours.toFixed(1)}h</div>
+                                    </div>
+                                  </div>
+                                  
+                                  <div className="grid grid-cols-2 gap-3 text-xs">
+                                    <div className="flex items-center gap-1">
+                                      <Zap className="w-3 h-3 text-blue-600" />
+                                      <span className="text-gray-600">Power:</span>
+                                      <span className="font-medium">{stop.charging_station.max_power_kW}kW</span>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <Euro className="w-3 h-3 text-blue-600" />
+                                      <span className="text-gray-600">Rate:</span>
+                                      <span className="font-medium">{stop.charging_station.price_per_kWh.toFixed(2)}€/kWh</span>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <Battery className="w-3 h-3 text-blue-600" />
+                                      <span className="text-gray-600">Energy:</span>
+                                      <span className="font-medium">{stop.energy_to_charge_kwh.toFixed(1)}kWh</span>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <MapPinIcon className="w-3 h-3 text-blue-600" />
+                                      <span className="text-gray-600">Location:</span>
+                                      <span className="font-medium">{stop.charging_station.latitude.toFixed(3)}, {stop.charging_station.longitude.toFixed(3)}</span>
+                                    </div>
+                                  </div>
+                                  
+                                  <div className="mt-2 pt-2 border-t border-blue-200">
+                                    <div className="flex items-center justify-between text-xs">
+                                      <div className="flex items-center gap-1">
+                                        <Battery className="w-3 h-3 text-gray-500" />
+                                        <span className="text-gray-600">Battery Level:</span>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-gray-500">{stop.arrival_battery_kwh.toFixed(0)}kWh</span>
+                                        <span className="text-gray-400">→</span>
+                                        <span className="font-medium text-green-600">{stop.departure_battery_kwh.toFixed(0)}kWh</span>
+                                      </div>
+                                    </div>
+                                  </div>
                                 </div>
-                                <div className="text-xs text-gray-500 mt-1">
-                                  Battery: {stop.arrival_battery_kwh.toFixed(0)}kWh → {stop.departure_battery_kwh.toFixed(0)}kWh
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Driver Breaks - Collapsible */}
+                      {route.routeData?.driver_breaks && route.routeData.driver_breaks.length > 0 && (
+                        <div className="text-sm">
+                          <button
+                            onClick={() => toggleDriverBreaks(route.id)}
+                            className="flex items-center justify-between w-full text-left mb-3 hover:bg-gray-50 p-2 rounded-md transition-colors"
+                          >
+                            <div className="flex items-center gap-2">
+                              <Coffee className="w-4 h-4 text-orange-600" />
+                              <span className="font-medium text-gray-700">Driver Breaks ({route.routeData.driver_breaks.length})</span>
+                            </div>
+                            {isDriverBreaksExpanded ? (
+                              <ChevronDown className="w-4 h-4 text-gray-500" />
+                            ) : (
+                              <ChevronRight className="w-4 h-4 text-gray-500" />
+                            )}
+                          </button>
+                          
+                          {isDriverBreaksExpanded && (
+                            <div className="space-y-3">
+                              {route.routeData.driver_breaks.map((breakItem, index) => (
+                                <div key={index} className={`border rounded-lg p-3 ${getBreakColor(breakItem.break_type)}`}>
+                                  <div className="flex items-start justify-between mb-2">
+                                    <div className="flex items-center gap-2">
+                                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                                        breakItem.break_type === 'short_break' ? 'bg-orange-600 text-white' : 'bg-purple-600 text-white'
+                                      }`}>
+                                        {breakItem.break_number}
+                                      </div>
+                                      <div>
+                                        <div className="font-medium capitalize flex items-center gap-1">
+                                          {getBreakIcon(breakItem.break_type)}
+                                          {breakItem.break_type.replace('_', ' ')} #{breakItem.break_number}
+                                        </div>
+                                        <div className="text-xs opacity-75">{breakItem.reason}</div>
+                                      </div>
+                                    </div>
+                                    <div className="text-right">
+                                      <div className="text-xs font-medium">{formatBreakDuration(breakItem.duration_minutes)}</div>
+                                      <div className="text-xs opacity-75">Start: {formatDuration(breakItem.start_time_minutes)}</div>
+                                    </div>
+                                  </div>
+                                  
+                                  <div className="grid grid-cols-2 gap-3 text-xs">
+                                    <div className="flex items-center gap-1">
+                                      <Timer className="w-3 h-3" />
+                                      <span className="opacity-75">Duration:</span>
+                                      <span className="font-medium">{formatBreakDuration(breakItem.duration_minutes)}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <Clock className="w-3 h-3" />
+                                      <span className="opacity-75">Start Time:</span>
+                                      <span className="font-medium">{formatDuration(breakItem.start_time_minutes)}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <MapPinIcon className="w-3 h-3" />
+                                      <span className="opacity-75">Location:</span>
+                                      <span className="font-medium">{breakItem.location[0].toFixed(3)}, {breakItem.location[1].toFixed(3)}</span>
+                                    </div>
+                                    {breakItem.charging_station && (
+                                      <div className="flex items-center gap-1">
+                                        <Zap className="w-3 h-3" />
+                                        <span className="opacity-75">Station:</span>
+                                        <span className="font-medium">{breakItem.charging_station.operator_name}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                  
+                                  {breakItem.charging_station && (
+                                    <div className="mt-2 pt-2 border-t border-current border-opacity-20">
+                                      <div className="text-xs">
+                                        <div className="font-medium mb-1">Charging Station Details:</div>
+                                        <div className="grid grid-cols-2 gap-2 opacity-75">
+                                          <div>Power: {breakItem.charging_station.max_power_kW}kW</div>
+                                          <div>Rate: {breakItem.charging_station.price_per_kWh.toFixed(2)}€/kWh</div>
+                                          <div>Country: {breakItem.charging_station.country}</div>
+                                          <div>Suitable for Trucks: {breakItem.charging_station.truck_suitability}</div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
-                              </div>
-                            ))}
-                          </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
