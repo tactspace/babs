@@ -23,7 +23,7 @@ LONG_REST_DURATION_HOURS = 11.0     # 11 hours mandatory rest
 # Add new constant at the top with other EU constants
 MAX_DIRECT_DRIVING_HOURS = 4.0  # 4 hours with 30min margin for direct routes
 
-def plan_route(request: SingleRouteRequest, truck_model: str = None, starting_battery_kwh: float = None) -> SingleRouteWithSegments:
+def plan_route(request: SingleRouteRequest, truck_model: str = None, starting_battery_kwh: float = None, driver_salary: float = None) -> SingleRouteWithSegments:
     """
     Custom route planner that plans routes between two points with truck capacity, 
     cost calculations, and EU driving regulations compliance.
@@ -32,6 +32,7 @@ def plan_route(request: SingleRouteRequest, truck_model: str = None, starting_ba
         request: SingleRouteRequest object containing start/end coordinates and optional route name
         truck_model: Name of the truck model to use for calculations (optional)
         starting_battery_kwh: Starting battery charge in kWh (optional, defaults to full battery)
+        driver_salary: Driver hourly salary in euros (optional, defaults to 35)
         
     Returns:
         SingleRouteWithSegments object with route details including segments, charging stops, 
@@ -64,14 +65,18 @@ def plan_route(request: SingleRouteRequest, truck_model: str = None, starting_ba
         else:
             starting_battery_kwh = min(starting_battery_kwh, truck.battery_capacity)
         
+        # Set driver salary (default to 35 if not provided)
+        if driver_salary is None:
+            driver_salary = 35
+        
         # Plan route using EU-compliant approach
-        return _plan_eu_compliant_route(request, truck, charging_stations, starting_battery_kwh, truck_model)
+        return _plan_eu_compliant_route(request, truck, charging_stations, starting_battery_kwh, truck_model, driver_salary)
             
     except Exception as e:
-        return _create_error_response(request, f"Unexpected error: {str(e)}")
+        return _create_error_response(request, f"Error planning route: {str(e)}")
 
 
-def _plan_eu_compliant_route(request: SingleRouteRequest, truck: TruckModel, charging_stations: List[ChargingStation], starting_battery_kwh: float, truck_model: str) -> SingleRouteWithSegments:
+def _plan_eu_compliant_route(request: SingleRouteRequest, truck: TruckModel, charging_stations: List[ChargingStation], starting_battery_kwh: float, truck_model: str, driver_salary: float) -> SingleRouteWithSegments:
     """
     EU-compliant route planning that respects driving time limits and mandatory breaks
     """
@@ -125,7 +130,7 @@ def _plan_eu_compliant_route(request: SingleRouteRequest, truck: TruckModel, cha
             direct_segment = _create_route_segment(current_position, destination, truck)
             if direct_segment:
                 route_segments.append(direct_segment)
-                _add_segment_costs(direct_segment, total_costs)
+                _add_segment_costs(direct_segment, total_costs, driver_salary)
 
                 # Update driver state for direct route
                 driver.mins_driven += direct_segment["duration_minutes"]
@@ -142,7 +147,7 @@ def _plan_eu_compliant_route(request: SingleRouteRequest, truck: TruckModel, cha
                     duration_minutes=direct_segment["duration_minutes"],
                     energy_consumption_kwh=direct_segment["energy_consumption"],
                     coordinates=direct_segment["coordinates"],
-                    costs=_calculate_segment_costs_dict(direct_segment),
+                    costs=_calculate_segment_costs_dict(direct_segment, driver_salary),
                     driver_id=driver.id
                 )
                 detailed_segments.append(detailed_segment)
@@ -224,7 +229,7 @@ def _plan_eu_compliant_route(request: SingleRouteRequest, truck: TruckModel, cha
                 segment_to_station = _create_route_segment(current_position, station_position, truck)
                 if segment_to_station:
                     route_segments.append(segment_to_station)
-                    _add_segment_costs(segment_to_station, total_costs)
+                    _add_segment_costs(segment_to_station, total_costs, driver_salary)
                 
                 # Update driver state
                 driver.mins_driven += segment_to_station["duration_minutes"]
@@ -262,7 +267,7 @@ def _plan_eu_compliant_route(request: SingleRouteRequest, truck: TruckModel, cha
                     duration_minutes=segment_to_station["duration_minutes"],
                     energy_consumption_kwh=segment_to_station["energy_consumption"],
                     coordinates=segment_to_station["coordinates"],
-                    costs=_calculate_segment_costs_dict(segment_to_station),
+                    costs=_calculate_segment_costs_dict(segment_to_station, driver_salary),
                     driver_id=driver.id
                 )
                 detailed_segments.append(detailed_segment)
@@ -272,7 +277,7 @@ def _plan_eu_compliant_route(request: SingleRouteRequest, truck: TruckModel, cha
                     break_type=DriverBreakType.SHORT_BREAK,
                     location=station_position,
                     start_time_minutes=total_journey_time_minutes,
-                    duration_minutes=charging_stop["charging_time_hours"] * 60,
+                    duration_minutes=max(charging_stop["charging_time_hours"] * 60, 45),
                     reason=f"Charging break at {best_station.operator_name}",
                     charging_station=best_station
                 )
@@ -282,7 +287,7 @@ def _plan_eu_compliant_route(request: SingleRouteRequest, truck: TruckModel, cha
                 final_segment = _create_route_segment(station_position, destination, truck)
                 if final_segment:
                     route_segments.append(final_segment)
-                    _add_segment_costs(final_segment, total_costs)
+                    _add_segment_costs(final_segment, total_costs, driver_salary)
                 
                 # Update driver state for final segment
                 driver.mins_driven += final_segment["duration_minutes"]
@@ -299,7 +304,7 @@ def _plan_eu_compliant_route(request: SingleRouteRequest, truck: TruckModel, cha
                     duration_minutes=final_segment["duration_minutes"],
                     energy_consumption_kwh=final_segment["energy_consumption"],
                     coordinates=final_segment["coordinates"],
-                    costs=_calculate_segment_costs_dict(final_segment),
+                    costs=_calculate_segment_costs_dict(final_segment, driver_salary),
                     driver_id=driver.id
                 )
                 detailed_segments.append(final_detailed_segment)
@@ -315,6 +320,8 @@ def _plan_eu_compliant_route(request: SingleRouteRequest, truck: TruckModel, cha
         predicted_distance = _get_route_distance(current_position, station_position)
         predicted_duration_hours = predicted_distance / 70.0
         predicted_duration_minutes = predicted_duration_hours * 60
+
+        print(f"PRED DURATION: {predicted_duration_minutes:.1f} minutes, break needed? {driver.continuous_driving_minutes + predicted_duration_minutes > MAX_CONTINUOUS_DRIVING_HOURS * 60}")
         
         # Step 7: Check EU compliance BEFORE creating segment
         # CORRECTED: Use continuous_driving_minutes directly
@@ -332,7 +339,7 @@ def _plan_eu_compliant_route(request: SingleRouteRequest, truck: TruckModel, cha
                 break_type=DriverBreakType.SHORT_BREAK,
                 location=break_location["location"],
                 start_time_minutes=total_journey_time_minutes,
-                duration_minutes=SHORT_BREAK_DURATION_HOURS * 60,  # Convert to minutes
+                duration_minutes=max(SHORT_BREAK_DURATION_HOURS * 60, 45),  # Convert to minutes
                 reason=f"Mandatory 45-minute break after {driver.continuous_driving_minutes:.1f} minutes continuous driving",
                 charging_station=break_location.get("station")
             )
@@ -353,6 +360,7 @@ def _plan_eu_compliant_route(request: SingleRouteRequest, truck: TruckModel, cha
         if (daily_driving_minutes + predicted_duration_minutes) > (MAX_DAILY_DRIVING_HOURS * 60):
             # Need 11-hour mandatory rest for multi-day planning
             break_count += 1
+            break_location = _find_break_location(current_position, charging_stations)
             # Create 11-hour mandatory rest
             mandatory_rest = DetailedDriverBreak(
                 break_number=break_count,
@@ -361,7 +369,7 @@ def _plan_eu_compliant_route(request: SingleRouteRequest, truck: TruckModel, cha
                 start_time_minutes=total_journey_time_minutes,
                 duration_minutes=LONG_REST_DURATION_HOURS * 60,  # Convert to minutes
                 reason=f"Mandatory 11-hour rest after {daily_driving_minutes:.1f} minutes daily driving (multi-day planning)",
-                charging_station=None
+                charging_station=break_location.get("station")
             )
             driver_breaks.append(mandatory_rest)
             
@@ -383,7 +391,7 @@ def _plan_eu_compliant_route(request: SingleRouteRequest, truck: TruckModel, cha
             return _create_error_response(request, f"Failed to create route segment {segment_count}")
         
         route_segments.append(segment)
-        _add_segment_costs(segment, total_costs)
+        _add_segment_costs(segment, total_costs, driver_salary)
         
         # Update driver state
         driver.mins_driven += segment["duration_minutes"]
@@ -399,7 +407,7 @@ def _plan_eu_compliant_route(request: SingleRouteRequest, truck: TruckModel, cha
             duration_minutes=segment["duration_minutes"],
             energy_consumption_kwh=segment["energy_consumption"],
             coordinates=segment["coordinates"],
-            costs=_calculate_segment_costs_dict(segment),
+            costs=_calculate_segment_costs_dict(segment, driver_salary),
             driver_id=driver.id
         )
         detailed_segments.append(detailed_segment)
@@ -476,7 +484,7 @@ def _plan_eu_compliant_route(request: SingleRouteRequest, truck: TruckModel, cha
     return SingleRouteWithSegments(
         distance_km=total_distance,
         route_name=request.route_name or f"{truck.manufacturer} {truck.model} Route",
-        duration_minutes=total_duration,
+        duration_minutes=total_journey_time_minutes,  # Use total_journey_time_minutes instead of total_duration
         success=True,
         message=message,
         route_segments=detailed_segments,
@@ -804,30 +812,34 @@ def _create_route_segment(start_point: Tuple[float, float], end_point: Tuple[flo
         return None
 
 
-def _add_segment_costs(segment: Dict, total_costs: Dict[str, float]):
+def _add_segment_costs(segment: Dict, total_costs: Dict[str, float], driver_salary: float):
     """Add segment costs to total costs"""
     duration_hours = segment["duration_minutes"] / 60
     distance_km = segment["distance_km"]
     
     # Cost parameters
-    DRIVER_HOURLY_PAY = 35.0
+    DRIVER_HOURLY_PAY = driver_salary
     DEPRECIATION_PER_KM = 0.05
     TOLLS_PER_KM = 0.00
+
+    print("Using driver salary: ", DRIVER_HOURLY_PAY)
     
     total_costs["driver_cost"] += DRIVER_HOURLY_PAY * duration_hours
     total_costs["depreciation_cost"] += DEPRECIATION_PER_KM * distance_km
     total_costs["tolls_cost"] += TOLLS_PER_KM * distance_km
 
 
-def _calculate_segment_costs_dict(segment: Dict) -> Dict[str, float]:
+def _calculate_segment_costs_dict(segment: Dict, driver_salary: float) -> Dict[str, float]:
     """Calculate costs for a single segment and return as dictionary"""
     duration_hours = segment["duration_minutes"] / 60
     distance_km = segment["distance_km"]
     
     # Cost parameters
-    DRIVER_HOURLY_PAY = 35.0
+    DRIVER_HOURLY_PAY = driver_salary
     DEPRECIATION_PER_KM = 0.05
     TOLLS_PER_KM = 0.00
+
+    print("Using driver salary: ", DRIVER_HOURLY_PAY)
     
     driver_cost = DRIVER_HOURLY_PAY * duration_hours
     depreciation_cost = DEPRECIATION_PER_KM * distance_km
@@ -913,7 +925,7 @@ def _create_direct_route_success_message(truck: TruckModel, segment: Dict, total
     return message
 
 
-def _calculate_route_costs(distance_km: float, duration_hours: float, energy_consumption_kwh: float) -> Dict[str, float]:
+def _calculate_route_costs(distance_km: float, duration_hours: float, energy_consumption_kwh: float, driver_salary: float) -> Dict[str, float]:
     """
     Calculate all route costs based on the detour_costs.csv structure
     
@@ -926,7 +938,7 @@ def _calculate_route_costs(distance_km: float, duration_hours: float, energy_con
         Dictionary with cost breakdown
     """
     # Cost parameters from detour_costs.csv
-    DRIVER_HOURLY_PAY = 35.0  # €/h
+    DRIVER_HOURLY_PAY = driver_salary  # €/h
     DEPRECIATION_PER_KM = 0.05  # €/km (vehicle variable cost)
     TOLLS_PER_KM = 0.00  # €/km (EV trucks exempt from tolls in EU)
     

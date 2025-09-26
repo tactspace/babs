@@ -131,17 +131,13 @@ async def get_optimal_route(request: SingleRouteRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-
-
-
-
-
-
 # Refactoring needed below
 @app.get("/trucks")
 async def get_trucks() -> Dict:
     """Get available truck models"""
-    return {model: truck.dict() for model, truck in truck_specs.items()}
+    return {"trucks": [truck.dict() for truck in truck_specs.values()]}
+
+    
 @app.get("/drivers")
 async def get_drivers() -> Dict:
     return {k: v.dict() for k, v in drivers.items()}
@@ -226,7 +222,7 @@ async def optimize_route(request: RouteRequest):
 
 
 @app.post("/calculate-costs", response_model=SingleRouteWithSegments)
-async def calculate_costs(request: SingleRouteRequest, truck_model: str = None, starting_battery_kwh: float = None):
+async def calculate_costs(request: SingleRouteRequest, truck_model: str = None, starting_battery_kwh: float = None, driver_salary: float = None):
     """Calculate detailed route costs with segments and charging stops"""
     try:
         # Validate truck model if provided
@@ -236,8 +232,9 @@ async def calculate_costs(request: SingleRouteRequest, truck_model: str = None, 
                 detail=f"Unknown truck model: {truck_model}. Available models: {list(truck_specs.keys())}"
             )
         
+        print("Driver salary: ", driver_salary, request)
         # Call the enhanced route planner
-        result = plan_route(request, truck_model, starting_battery_kwh)
+        result = plan_route(request, truck_model, starting_battery_kwh, request.driver_salary)
         
         if not result.success:
             raise HTTPException(status_code=400, detail=result.message)

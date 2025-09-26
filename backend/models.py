@@ -111,6 +111,7 @@ class SingleRouteRequest(BaseModel):
     end_lat: float
     end_lng: float
     route_name: Optional[str] = None
+    driver_salary: Optional[float] = None
 
 class DetailedRouteSegment(BaseModel):
     """Model representing a detailed route segment with costs"""

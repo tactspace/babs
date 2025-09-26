@@ -10,20 +10,19 @@ import { SingleRouteWithSegments } from "../../types/route";
 import { BASE_URL } from "../../lib/utils";
 const MapView = dynamic(() => import("./MapView"), { ssr: false });
 
-// Define the route type
 export interface Route {
   id: string;
   start: { lat: number; lng: number };
   end: { lat: number; lng: number };
   name?: string;
-  path?: Array<{lat: number, lng: number}>; // Add path coordinates
-  distance_km?: number; // Add distance
-  duration_minutes?: number; // Add duration
-  // NEW: Enhanced route information
+  path?: Array<{lat: number, lng: number}>;
+  distance_km?: number; 
+  duration_minutes?: number;
   routeData?: SingleRouteWithSegments;
   segments?: Array<{lat: number, lng: number}>[];
   chargingStops?: Array<{lat: number, lng: number}>;
   driverBreaks?: Array<{lat: number, lng: number}>;
+  driverSalary?: number; // Add driver salary to Route interface
 }
 
 export default function DemoPage() {
@@ -32,9 +31,8 @@ export default function DemoPage() {
   const [showChargingStations, setShowChargingStations] = useState<boolean>(false);
   const [chargingStations, setChargingStations] = useState<ChargingStation[]>([]);
   const [loadingChargingStations, setLoadingChargingStations] = useState<boolean>(false);
-  const [isFindingRoutes, setIsFindingRoutes] = useState<boolean>(false); // Add loading state
+  const [isFindingRoutes, setIsFindingRoutes] = useState<boolean>(false);
 
-  // Fetch charging stations when showChargingStations becomes true
   useEffect(() => {
     const fetchChargingStations = async () => {
       if (!showChargingStations) return;
@@ -57,34 +55,36 @@ export default function DemoPage() {
     fetchChargingStations();
   }, [showChargingStations]);
 
-  const handleCoordinateSubmit = (startLat: number, startLng: number, endLat: number, endLng: number, name?: string) => {
-    // Always add a new route - no editing allowed
-    addNewRoute(startLat, startLng, endLat, endLng, name);
+  const handleCoordinateSubmit = (startLat: number, startLng: number, endLat: number, endLng: number, name?: string, driverSalary?: number) => {
+    addNewRoute(startLat, startLng, endLat, endLng, name, driverSalary);
   };
 
-  const handleImportCSV = (csvRoutes: Array<{name: string, startLat: number, startLng: number, endLat: number, endLng: number}>) => {
+  const handleImportCSV = (csvRoutes: Array<{name: string, startLat: number, startLng: number, endLat: number, endLng: number, driverSalary?: number}>) => {
     const newRoutes: Route[] = csvRoutes.map((csvRoute, index) => ({
       id: `route-${Date.now()}-${index}`,
       name: csvRoute.name,
       start: { lat: csvRoute.startLat, lng: csvRoute.startLng },
-      end: { lat: csvRoute.endLat, lng: csvRoute.endLng }
+      end: { lat: csvRoute.endLat, lng: csvRoute.endLng },
+      driverSalary: csvRoute.driverSalary
     }));
 
     setRoutes([...routes, ...newRoutes]);
     
-    // Set the first imported route as active
     if (newRoutes.length > 0) {
       setActiveRouteId(newRoutes[0].id);
     }
   };
 
-  const addNewRoute = (startLat: number, startLng: number, endLat: number, endLng: number, name?: string) => {
+  const addNewRoute = (startLat: number, startLng: number, endLat: number, endLng: number, name?: string, driverSalary?: number) => {
     const newRoute: Route = {
-      id: `route-${Date.now()}`, // Use timestamp for unique IDs
+      id: `route-${Date.now()}`, 
       name: name || `Route ${routes.length + 1}`,
       start: { lat: startLat, lng: startLng },
-      end: { lat: endLat, lng: endLng }
+      end: { lat: endLat, lng: endLng },
+      driverSalary: driverSalary
     };
+    console.log("DemoPage - addNewRoute with driverSalary:", driverSalary);
+    console.log("DemoPage - newRoute created:", newRoute);
     
     setRoutes([...routes, newRoute]);
     setActiveRouteId(newRoute.id);
@@ -122,14 +122,13 @@ export default function DemoPage() {
       return;
     }
 
-    setIsFindingRoutes(true); // Start loading
+    setIsFindingRoutes(true);
     console.log(`Finding routes for ${routes.length} existing routes...`);
     
     try {
       // Process each route
       for (const route of routes) {
         try {
-          // UPDATED: Use the new /calculate-costs endpoint
           const response = await fetch(`${BASE_URL}/calculate-costs`, {
             method: 'POST',
             headers: {
@@ -140,7 +139,8 @@ export default function DemoPage() {
               start_lng: route.start.lng,
               end_lat: route.end.lat,
               end_lng: route.end.lng,
-              route_name: route.name || `Route ${route.id}`
+              route_name: route.name || `Route ${route.id}`,
+              driver_salary: route.driverSalary
             }),
           });
 
@@ -215,7 +215,7 @@ export default function DemoPage() {
             console.error(`Route calculation failed for ${route.name}:`, routeData.message);
           }
         } catch (error) {
-          console.error(`Error fetching route for ${route.name}:`, error);
+          console.error(`Error finding route for ${route.name}:`, error);
         }
       }
     } finally {
@@ -226,7 +226,7 @@ export default function DemoPage() {
   return (
     <div className="h-screen bg-background flex flex-col md:flex-row overflow-hidden">
       
-      <div className="w-full md:w-2/5 flex flex-col border-r border-gray-200">
+      <div className="w-full md:w-2/5 flex flex-col border-r border-gray-200 overflow-y-auto">
         {/* Header - Fixed */}
         <div className="px-8 pt-8 flex-shrink-0">
           <h1 className="text-2xl font-bold text-center">Route Planner</h1>
@@ -243,17 +243,19 @@ export default function DemoPage() {
           />
         </div>
         
-        {/* Routes List - Scrollable */}
-        <RoutesList 
-          routes={routes}
-          activeRouteId={activeRouteId}
-          onRouteSelect={handleRouteSelect}
-          onRouteDelete={handleDeleteRoute}
-          onClearAll={handleClearAll}
-          showChargingStations={showChargingStations}
-          onChargingStationsToggle={handleChargingStationsToggle}
-          loadingChargingStations={loadingChargingStations}
-        />
+        {/* Routes List - Now unscrollable, consumes full height */}
+        <div className="flex-1">
+          <RoutesList 
+            routes={routes}
+            activeRouteId={activeRouteId}
+            onRouteSelect={handleRouteSelect}
+            onRouteDelete={handleDeleteRoute}
+            onClearAll={handleClearAll}
+            showChargingStations={showChargingStations}
+            onChargingStationsToggle={handleChargingStationsToggle}
+            loadingChargingStations={loadingChargingStations}
+          />
+        </div>
       </div>
       
       <div className="w-full md:w-3/5 h-full">
