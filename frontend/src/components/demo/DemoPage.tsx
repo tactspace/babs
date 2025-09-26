@@ -10,16 +10,14 @@ import { SingleRouteWithSegments } from "../../types/route";
 import { BASE_URL } from "../../lib/utils";
 const MapView = dynamic(() => import("./MapView"), { ssr: false });
 
-// Define the route type
 export interface Route {
   id: string;
   start: { lat: number; lng: number };
   end: { lat: number; lng: number };
   name?: string;
-  path?: Array<{lat: number, lng: number}>; // Add path coordinates
-  distance_km?: number; // Add distance
-  duration_minutes?: number; // Add duration
-  // NEW: Enhanced route information
+  path?: Array<{lat: number, lng: number}>;
+  distance_km?: number; 
+  duration_minutes?: number;
   routeData?: SingleRouteWithSegments;
   segments?: Array<{lat: number, lng: number}>[];
   chargingStops?: Array<{lat: number, lng: number}>;
@@ -32,9 +30,8 @@ export default function DemoPage() {
   const [showChargingStations, setShowChargingStations] = useState<boolean>(false);
   const [chargingStations, setChargingStations] = useState<ChargingStation[]>([]);
   const [loadingChargingStations, setLoadingChargingStations] = useState<boolean>(false);
-  const [isFindingRoutes, setIsFindingRoutes] = useState<boolean>(false); // Add loading state
+  const [isFindingRoutes, setIsFindingRoutes] = useState<boolean>(false);
 
-  // Fetch charging stations when showChargingStations becomes true
   useEffect(() => {
     const fetchChargingStations = async () => {
       if (!showChargingStations) return;
@@ -58,7 +55,6 @@ export default function DemoPage() {
   }, [showChargingStations]);
 
   const handleCoordinateSubmit = (startLat: number, startLng: number, endLat: number, endLng: number, name?: string) => {
-    // Always add a new route - no editing allowed
     addNewRoute(startLat, startLng, endLat, endLng, name);
   };
 
@@ -72,7 +68,6 @@ export default function DemoPage() {
 
     setRoutes([...routes, ...newRoutes]);
     
-    // Set the first imported route as active
     if (newRoutes.length > 0) {
       setActiveRouteId(newRoutes[0].id);
     }
@@ -80,7 +75,7 @@ export default function DemoPage() {
 
   const addNewRoute = (startLat: number, startLng: number, endLat: number, endLng: number, name?: string) => {
     const newRoute: Route = {
-      id: `route-${Date.now()}`, // Use timestamp for unique IDs
+      id: `route-${Date.now()}`, 
       name: name || `Route ${routes.length + 1}`,
       start: { lat: startLat, lng: startLng },
       end: { lat: endLat, lng: endLng }
@@ -122,14 +117,13 @@ export default function DemoPage() {
       return;
     }
 
-    setIsFindingRoutes(true); // Start loading
+    setIsFindingRoutes(true);
     console.log(`Finding routes for ${routes.length} existing routes...`);
     
     try {
       // Process each route
       for (const route of routes) {
         try {
-          // UPDATED: Use the new /calculate-costs endpoint
           const response = await fetch(`${BASE_URL}/calculate-costs`, {
             method: 'POST',
             headers: {

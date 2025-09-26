@@ -131,17 +131,13 @@ async def get_optimal_route(request: SingleRouteRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-
-
-
-
-
-
 # Refactoring needed below
 @app.get("/trucks")
 async def get_trucks() -> Dict:
     """Get available truck models"""
-    return {model: truck.dict() for model, truck in truck_specs.items()}
+    return {"trucks": [truck.dict() for truck in truck_specs.values()]}
+
+    
 @app.get("/drivers")
 async def get_drivers() -> Dict:
     return {k: v.dict() for k, v in drivers.items()}

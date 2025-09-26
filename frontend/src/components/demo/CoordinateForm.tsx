@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, FormEvent, useRef } from "react";
+import TruckSelector, { Truck } from "./TruckSelector";
 
 interface CoordinateFormProps {
   onSubmit: (startLat: number, startLng: number, endLat: number, endLng: number, name?: string) => void;
@@ -17,6 +18,7 @@ export default function CoordinateForm({ onSubmit, onImportCSV, onFindRoute, isF
   const [endLongitude, setEndLongitude] = useState("");
   const [routeName, setRouteName] = useState("");
   const [error, setError] = useState("");
+  const [selectedTruck, setSelectedTruck] = useState<Truck | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = (e: FormEvent) => {
@@ -55,6 +57,7 @@ export default function CoordinateForm({ onSubmit, onImportCSV, onFindRoute, isF
     setStartLongitude("");
     setEndLatitude("");
     setEndLongitude("");
+    setSelectedTruck(null);
   };
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -79,7 +82,7 @@ export default function CoordinateForm({ onSubmit, onImportCSV, onFindRoute, isF
 
         if (onImportCSV) {
           onImportCSV(routes);
-          setError(""); // Clear any previous errors
+          setError("");
         }
       } catch (error) {
         setError(`Error reading CSV file. Please check the format. ${error}`);
@@ -88,7 +91,6 @@ export default function CoordinateForm({ onSubmit, onImportCSV, onFindRoute, isF
 
     reader.readAsText(file);
     
-    // Reset file input
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -150,7 +152,7 @@ export default function CoordinateForm({ onSubmit, onImportCSV, onFindRoute, isF
 
   const handleFindRoute = () => {
     if (onFindRoute) {
-      onFindRoute(); // Just call the callback, no validation needed
+      onFindRoute();
     }
   };
 
@@ -172,6 +174,11 @@ export default function CoordinateForm({ onSubmit, onImportCSV, onFindRoute, isF
             placeholder="e.g., Berlin Route"
           />
         </div>
+
+        <TruckSelector 
+          onTruckSelect={setSelectedTruck}
+          selectedTruck={selectedTruck}
+        />
 
         <div className="mb-4">
           <h3 className="font-medium text-gray-700 mb-2">Starting Point</h3>
