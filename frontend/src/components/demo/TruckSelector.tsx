@@ -80,7 +80,7 @@ export default function TruckSelector({ onTruckSelect, selectedTruck }: TruckSel
               className={`relative flex-shrink-0 w-40 h-24 p-3 rounded border transition-all duration-150 group ${
                 enabled
                   ? isSelected(truck)
-                    ? 'border-blue-500 bg-blue-50 cursor-pointer'
+                    ? 'border-primary bg-primary/10 cursor-pointer'
                     : 'border-gray-200 bg-white hover:border-gray-300 cursor-pointer'
                   : 'border-gray-200 bg-gray-100 opacity-50 cursor-not-allowed'
               }`}

@@ -2,9 +2,10 @@
 
 import { useState, FormEvent, useRef } from "react";
 import TruckSelector, { Truck } from "./TruckSelector";
+import ComplianceSelector, { ComplianceType } from "./ComplianceSelector";
 
 interface CoordinateFormProps {
-  onSubmit: (startLat: number, startLng: number, endLat: number, endLng: number, name?: string) => void;
+  onSubmit: (startLat: number, startLng: number, endLat: number, endLng: number, name?: string, driverSalary?: number) => void;
   onImportCSV?: (routes: Array<{name: string, startLat: number, startLng: number, endLat: number, endLng: number}>) => void;
   onFindRoute?: () => void; // Simplified - no parameters needed
   isFindRouteEnabled?: boolean; // Add enabled state
@@ -17,8 +18,10 @@ export default function CoordinateForm({ onSubmit, onImportCSV, onFindRoute, isF
   const [endLatitude, setEndLatitude] = useState("");
   const [endLongitude, setEndLongitude] = useState("");
   const [routeName, setRouteName] = useState("");
+  const [driverSalary, setDriverSalary] = useState("");
   const [error, setError] = useState("");
   const [selectedTruck, setSelectedTruck] = useState<Truck | null>(null);
+  const [selectedCompliance, setSelectedCompliance] = useState<ComplianceType | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = (e: FormEvent) => {
@@ -29,6 +32,9 @@ export default function CoordinateForm({ onSubmit, onImportCSV, onFindRoute, isF
     const startLng = parseFloat(startLongitude);
     const endLat = parseFloat(endLatitude);
     const endLng = parseFloat(endLongitude);
+    const salary = driverSalary ? parseInt(driverSalary) : undefined;
+    console.log("CoordinateForm - driverSalary input:", driverSalary);
+    console.log("CoordinateForm - parsed salary:", salary);
 
     if (isNaN(startLat) || isNaN(startLng) || isNaN(endLat) || isNaN(endLng)) {
       setError("Please enter valid numeric coordinates");
@@ -45,7 +51,13 @@ export default function CoordinateForm({ onSubmit, onImportCSV, onFindRoute, isF
       return;
     }
 
-    onSubmit(startLat, startLng, endLat, endLng, routeName);
+    if (driverSalary && (isNaN(salary!) || salary! <= 0)) {
+      setError("Driver salary must be a positive number");
+      return;
+    }
+
+    onSubmit(startLat, startLng, endLat, endLng, routeName, salary);
+    console.log("CoordinateForm - calling onSubmit with salary:", salary);
     
     // Clear the form after successful submission
     clearForm();
@@ -57,7 +69,9 @@ export default function CoordinateForm({ onSubmit, onImportCSV, onFindRoute, isF
     setStartLongitude("");
     setEndLatitude("");
     setEndLongitude("");
+    setDriverSalary("");
     setSelectedTruck(null);
+    setSelectedCompliance(null);
   };
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -96,9 +110,9 @@ export default function CoordinateForm({ onSubmit, onImportCSV, onFindRoute, isF
     }
   };
 
-  const parseCSV = (csvText: string): Array<{name: string, startLat: number, startLng: number, endLat: number, endLng: number}> => {
+  const parseCSV = (csvText: string): Array<{name: string, startLat: number, startLng: number, endLat: number, endLng: number, driverSalary?: number}> => {
     const lines = csvText.trim().split('\n');
-    const routes: Array<{name: string, startLat: number, startLng: number, endLat: number, endLng: number}> = [];
+    const routes: Array<{name: string, startLat: number, startLng: number, endLat: number, endLng: number, driverSalary?: number}> = [];
 
     // Skip header row if it exists
     const startIndex = lines[0].toLowerCase().includes('route_name') ? 1 : 0;
@@ -115,12 +129,13 @@ export default function CoordinateForm({ onSubmit, onImportCSV, onFindRoute, isF
         continue;
       }
 
-      const [name, startLatStr, startLngStr, endLatStr, endLngStr] = columns;
+      const [name, startLatStr, startLngStr, endLatStr, endLngStr, driverSalaryStr] = columns;
       
       const startLat = parseFloat(startLatStr);
       const startLng = parseFloat(startLngStr);
       const endLat = parseFloat(endLatStr);
       const endLng = parseFloat(endLngStr);
+      const driverSalary = driverSalaryStr ? parseFloat(driverSalaryStr) : undefined;
 
       // Validate coordinates
       if (isNaN(startLat) || isNaN(startLng) || isNaN(endLat) || isNaN(endLng)) {
@@ -143,7 +158,8 @@ export default function CoordinateForm({ onSubmit, onImportCSV, onFindRoute, isF
         startLat,
         startLng,
         endLat,
-        endLng
+        endLng,
+        driverSalary
       });
     }
 
@@ -157,7 +173,7 @@ export default function CoordinateForm({ onSubmit, onImportCSV, onFindRoute, isF
   };
 
   return (
-    <div className="bg-white rounded-lg p-4">
+    <div className="bg-white rounded-lg p-4 max-h-[80vh] overflow-y-auto">
       <h2 className="text-xl font-bold mb-4">Add New Route</h2>
       
       <form onSubmit={handleSubmit}>
@@ -179,6 +195,26 @@ export default function CoordinateForm({ onSubmit, onImportCSV, onFindRoute, isF
           onTruckSelect={setSelectedTruck}
           selectedTruck={selectedTruck}
         />
+
+        <ComplianceSelector 
+          onComplianceSelect={setSelectedCompliance}
+          selectedCompliance={selectedCompliance}
+        />
+{/* 
+        <div className="mb-4">
+          <label htmlFor="driverSalary" className="block text-sm font-medium text-gray-700 mb-1">
+            Driver Salary (€/hour)
+          </label>
+          <input
+            id="driverSalary"
+            type="number"
+            value={driverSalary}
+            onChange={(e) => setDriverSalary(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+            placeholder="e.g., 35"
+            min="1"
+          />
+        </div> */}
 
         <div className="mb-4">
           <h3 className="font-medium text-gray-700 mb-2">Starting Point</h3>

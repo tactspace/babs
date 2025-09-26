@@ -22,6 +22,7 @@ export interface Route {
   segments?: Array<{lat: number, lng: number}>[];
   chargingStops?: Array<{lat: number, lng: number}>;
   driverBreaks?: Array<{lat: number, lng: number}>;
+  driverSalary?: number; // Add driver salary to Route interface
 }
 
 export default function DemoPage() {
@@ -54,16 +55,17 @@ export default function DemoPage() {
     fetchChargingStations();
   }, [showChargingStations]);
 
-  const handleCoordinateSubmit = (startLat: number, startLng: number, endLat: number, endLng: number, name?: string) => {
-    addNewRoute(startLat, startLng, endLat, endLng, name);
+  const handleCoordinateSubmit = (startLat: number, startLng: number, endLat: number, endLng: number, name?: string, driverSalary?: number) => {
+    addNewRoute(startLat, startLng, endLat, endLng, name, driverSalary);
   };
 
-  const handleImportCSV = (csvRoutes: Array<{name: string, startLat: number, startLng: number, endLat: number, endLng: number}>) => {
+  const handleImportCSV = (csvRoutes: Array<{name: string, startLat: number, startLng: number, endLat: number, endLng: number, driverSalary?: number}>) => {
     const newRoutes: Route[] = csvRoutes.map((csvRoute, index) => ({
       id: `route-${Date.now()}-${index}`,
       name: csvRoute.name,
       start: { lat: csvRoute.startLat, lng: csvRoute.startLng },
-      end: { lat: csvRoute.endLat, lng: csvRoute.endLng }
+      end: { lat: csvRoute.endLat, lng: csvRoute.endLng },
+      driverSalary: csvRoute.driverSalary
     }));
 
     setRoutes([...routes, ...newRoutes]);
@@ -73,13 +75,16 @@ export default function DemoPage() {
     }
   };
 
-  const addNewRoute = (startLat: number, startLng: number, endLat: number, endLng: number, name?: string) => {
+  const addNewRoute = (startLat: number, startLng: number, endLat: number, endLng: number, name?: string, driverSalary?: number) => {
     const newRoute: Route = {
       id: `route-${Date.now()}`, 
       name: name || `Route ${routes.length + 1}`,
       start: { lat: startLat, lng: startLng },
-      end: { lat: endLat, lng: endLng }
+      end: { lat: endLat, lng: endLng },
+      driverSalary: driverSalary
     };
+    console.log("DemoPage - addNewRoute with driverSalary:", driverSalary);
+    console.log("DemoPage - newRoute created:", newRoute);
     
     setRoutes([...routes, newRoute]);
     setActiveRouteId(newRoute.id);
@@ -134,7 +139,8 @@ export default function DemoPage() {
               start_lng: route.start.lng,
               end_lat: route.end.lat,
               end_lng: route.end.lng,
-              route_name: route.name || `Route ${route.id}`
+              route_name: route.name || `Route ${route.id}`,
+              driver_salary: route.driverSalary
             }),
           });
 
@@ -209,7 +215,7 @@ export default function DemoPage() {
             console.error(`Route calculation failed for ${route.name}:`, routeData.message);
           }
         } catch (error) {
-          console.error(`Error fetching route for ${route.name}:`, error);
+          console.error(`Error finding route for ${route.name}:`, error);
         }
       }
     } finally {
