@@ -226,7 +226,7 @@ export default function DemoPage() {
   return (
     <div className="h-screen bg-background flex flex-col md:flex-row overflow-hidden">
       
-      <div className="w-full md:w-2/5 flex flex-col border-r border-gray-200">
+      <div className="w-full md:w-2/5 flex flex-col border-r border-gray-200 overflow-y-auto">
         {/* Header - Fixed */}
         <div className="px-8 pt-8 flex-shrink-0">
           <h1 className="text-2xl font-bold text-center">Route Planner</h1>
@@ -243,17 +243,19 @@ export default function DemoPage() {
           />
         </div>
         
-        {/* Routes List - Scrollable */}
-        <RoutesList 
-          routes={routes}
-          activeRouteId={activeRouteId}
-          onRouteSelect={handleRouteSelect}
-          onRouteDelete={handleDeleteRoute}
-          onClearAll={handleClearAll}
-          showChargingStations={showChargingStations}
-          onChargingStationsToggle={handleChargingStationsToggle}
-          loadingChargingStations={loadingChargingStations}
-        />
+        {/* Routes List - Now unscrollable, consumes full height */}
+        <div className="flex-1">
+          <RoutesList 
+            routes={routes}
+            activeRouteId={activeRouteId}
+            onRouteSelect={handleRouteSelect}
+            onRouteDelete={handleDeleteRoute}
+            onClearAll={handleClearAll}
+            showChargingStations={showChargingStations}
+            onChargingStationsToggle={handleChargingStationsToggle}
+            loadingChargingStations={loadingChargingStations}
+          />
+        </div>
       </div>
       
       <div className="w-full md:w-3/5 h-full">

@@ -173,7 +173,7 @@ export default function CoordinateForm({ onSubmit, onImportCSV, onFindRoute, isF
   };
 
   return (
-    <div className="bg-white rounded-lg p-4 max-h-[80vh] overflow-y-auto">
+    <div className="bg-white rounded-lg p-4">
       <h2 className="text-xl font-bold mb-4">Add New Route</h2>
       
       <form onSubmit={handleSubmit}>
